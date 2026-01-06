@@ -18,6 +18,12 @@ class ImageSubscriber(Node):
         self.declare_parameter('camera.fy', 905.5208)
         self.declare_parameter('camera.cx', 663.4498)
         self.declare_parameter('camera.cy', 366.7621)
+
+        self.declare_parameter('conf_thres', 0.35)
+        self.declare_parameter('show_image', True)
+
+        default_model = 'yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin'
+        self.declare_parameter('model_filename', default_model)
         
         self.create_subscription(
             Image,
@@ -53,21 +59,24 @@ class ImageSubscriber(Node):
         "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
         ]
 
+        conf_val = self.get_parameter('conf_thres').get_parameter_value().double_value
+        
+        model_filename = self.get_parameter('model_filename').get_parameter_value().string_value
+
         try:
-            model_path = os.path.join(
-                get_package_share_directory('detect'),
-                'models',
-                'yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin'
-            )
-            self.get_logger().info(f"成功定位模型文件: {model_path}")
+            pkg_path = get_package_share_directory('detect')
+            model_path = os.path.join(pkg_path, 'models', model_filename)
+            
+            self.get_logger().info(f"正在加载模型: {model_filename}")
+            self.get_logger().info(f"置信度阈值: {conf_val}")
         except Exception as e:
-            self.get_logger().error(f"定位模型文件失败: {e}")
+            self.get_logger().error(f"路径获取失败: {e}")
             model_path = ""
 
         self.detector = BPU_Detect(
             model_path = model_path,
             labelnames = self.labelname,
-            conf = 0.35,
+            conf = conf_val,
 #            mode = True,
             is_save = False
             )
@@ -75,7 +84,9 @@ class ImageSubscriber(Node):
     def listener_callback(self, msg):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-
+            
+            show_img = self.get_parameter('show_image').get_parameter_value().bool_value
+            
             self.frame_count += 1
             curr_time = time.time()
             elapsed_time = curr_time - self.start_time
@@ -84,12 +95,14 @@ class ImageSubscriber(Node):
                 self.fps = self.frame_count / elapsed_time
                 self.frame_count = 0
                 self.start_time = curr_time
+                if not show_img:
+                    self.get_logger().info(f"Current FPS: {self.fps:.2f}")
 
-            cv2.putText(cv_image, f"FPS: {self.fps:.2f}", (10, 30), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
-            
-#            self.detector.detect(cv_image, method_post = 1)
-            self.detector.detect(cv_image)
+            if show_img:
+                cv2.putText(cv_image, f"FPS: {self.fps:.2f}", (10, 30), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+
+            self.detector.detect(cv_image, show_img=show_img)
 
             array_msg = Object3DArray()
             array_msg.header = msg.header 

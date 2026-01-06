@@ -236,7 +236,10 @@ class BPU_Detect:
         cv2.putText(img, label, (label_x, label_y), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
-    def detect_result(self, img):
+    def detect_result(self, img, show_img):
+        if not self.is_save and not show_img:
+            return
+
         if isinstance(img, str):
             draw_img = cv2.imread(img)
         elif isinstance(img, np.ndarray):
@@ -248,23 +251,24 @@ class BPU_Detect:
             x1, y1, x2, y2 = bbox
             self.draw_detection(draw_img, (x1, y1, x2, y2), score, class_id, self.labelname)
 
-        if not self.window_created:
-            cv2.namedWindow("Detection Result", cv2.WINDOW_NORMAL)
-            cv2.setWindowProperty("Detection Result", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-            self.window_created = True
-
         if self.is_save:
             cv2.imwrite("result.jpg", draw_img)
-        else:
+        
+        if show_img:
+            if not self.window_created:
+                cv2.namedWindow("Detection Result", cv2.WINDOW_NORMAL)
+                cv2.setWindowProperty("Detection Result", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                self.window_created = True
+            
             cv2.imshow("Detection Result", draw_img)
-            cv2.waitKey(1)  # 非阻塞
+            cv2.waitKey(1)
   
-    def detect(self, img):
+    def detect(self, img, show_img=True):
         """
         检测函数
         Args:
-            img_path: 图片路径或图片数组
-            method_post: 后处理方法
+            img: 图片
+            show_img: 是否显示图片窗口 (bool)
         """
         # 预处理
         input_tensor = self.PreProcess(img)
@@ -272,7 +276,9 @@ class BPU_Detect:
         # 推理和后处理
         self.model_outputs = self.model.forward(input_tensor)
         self.PostProcess()
-        self.detect_result(img)
+        
+        # 将开关传递给可视化函数
+        self.detect_result(img, show_img)
 
 if __name__ == "__main__":
     labelname = [
