@@ -95,6 +95,7 @@ class ImageSubscriber(Node):
                 self.fps = self.frame_count / elapsed_time
                 self.frame_count = 0
                 self.start_time = curr_time
+
                 if not show_img:
                     self.get_logger().info(f"Current FPS: {self.fps:.2f}")
 
