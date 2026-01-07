@@ -41,9 +41,9 @@ def generate_launch_description():
     # 2 & 3. Lifecycle 生命周期管理
     # ==========================================
     # 对应命令: ros2 lifecycle set /camera/camera configure
-    # 设置延时 5 秒，等待相机节点加载完毕后再执行 configure
+    # 设置延时 1 秒，等待相机节点加载完毕后再执行 configure
     configure_camera_cmd = TimerAction(
-        period=5.0,
+        period=1.0,
         actions=[
             ExecuteProcess(
                 cmd=['ros2', 'lifecycle', 'set', '/camera/camera', 'configure'],
@@ -53,9 +53,9 @@ def generate_launch_description():
     )
 
     # 对应命令: ros2 lifecycle set /camera/camera activate
-    # 设置延时 10 秒 (Configure 之后 5 秒)，执行 activate
+    # 设置延时 2 秒 (Configure 之后 1 秒)，执行 activate
     activate_camera_cmd = TimerAction(
-        period=10.0,
+        period=2.0,
         actions=[
             ExecuteProcess(
                 cmd=['ros2', 'lifecycle', 'set', '/camera/camera', 'activate'],
