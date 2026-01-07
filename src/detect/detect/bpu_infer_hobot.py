@@ -201,10 +201,11 @@ class BPU_Detect:
 #                print(f"第{i}个框的中心点坐标：({cx}, {cy})")
                 
         else:
-            print("No detections after NMS")
+#            print("No detections after NMS")
             self.bboxes = np.array([], dtype=np.int32).reshape(0, 4)
             self.scores = np.array([], dtype=np.float32)
             self.ids = np.array([], dtype=np.int32)
+            self.centers = []
 
     def draw_detection(self,img: np.array, 
                         box,
