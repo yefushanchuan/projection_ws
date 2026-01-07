@@ -9,7 +9,9 @@ public:
     CoordTransformNode()
     : Node("coord_transformer_node")
     {
-        this->declare_parameter<double>("offset_d", 0.05);
+        this->declare_parameter<double>("x_offset", 0.0);
+        this->declare_parameter<double>("y_offset", 0.05);
+        this->declare_parameter<double>("z_offset", 0.0);
         subscription_ = this->create_subscription<object3d_msgs::msg::Object3DArray>(
             "target_points_array",
             rclcpp::QoS(10),
@@ -25,7 +27,9 @@ public:
 private:
     void array_callback(const object3d_msgs::msg::Object3DArray::SharedPtr msg)
     {
-        double offset_d = this->get_parameter("offset_d").as_double();
+        double dx = this->get_parameter("x_offset").as_double();
+        double dy = this->get_parameter("y_offset").as_double();
+        double dz = this->get_parameter("z_offset").as_double();
         object3d_msgs::msg::Object3DArray projected_msg;
         projected_msg.header = msg->header;
         projected_msg.header.frame_id = "projector_frame";
@@ -33,7 +37,9 @@ private:
         for (const auto & input_obj : msg->objects) {
             auto output_obj = input_obj; // 复制对象
 
-            output_obj.point.y = input_obj.point.y + offset_d; 
+            output_obj.point.x = input_obj.point.x + dx;
+            output_obj.point.y = input_obj.point.y + dy;
+            output_obj.point.z = input_obj.point.z + dz;
             
             projected_msg.objects.push_back(output_obj);
         }

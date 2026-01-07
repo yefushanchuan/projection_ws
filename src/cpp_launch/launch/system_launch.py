@@ -11,18 +11,14 @@ def generate_launch_description():
     # 0. 声明启动参数 (Configuration)
     # ==========================================
     # 定义 conf_thres 参数，默认值 0.35
-    conf_thres_arg = DeclareLaunchArgument(
-        'conf_thres',
-        default_value='0.35',
-        description='YOLOv5 confidence threshold'
-    )
+    conf_thres_arg = DeclareLaunchArgument('conf_thres', default_value='0.35', description='YOLOv5 confidence threshold')
 
     # 定义 show_image 参数，默认值 false (注意：Launch文件中布尔值通常作为字符串传递)
-    show_image_arg = DeclareLaunchArgument(
-        'show_image',
-        default_value='false',
-        description='Whether to show detection image window'
-    )
+    show_image_arg = DeclareLaunchArgument('show_image', default_value='false', description='Whether to show detection image window')
+
+    x_off_arg = DeclareLaunchArgument('x_offset', default_value='0.0', description='Translation in X')
+    y_off_arg = DeclareLaunchArgument('y_offset', default_value='0.0', description='Translation in Y')
+    z_off_arg = DeclareLaunchArgument('z_offset', default_value='0.0', description='Translation in Z')
     # ==========================================
     # 1. RealSense 相机启动
     # ==========================================
@@ -47,7 +43,7 @@ def generate_launch_description():
     # 对应命令: ros2 lifecycle set /camera/camera configure
     # 设置延时 5 秒，等待相机节点加载完毕后再执行 configure
     configure_camera_cmd = TimerAction(
-        period=0.1,
+        period=5.0,
         actions=[
             ExecuteProcess(
                 cmd=['ros2', 'lifecycle', 'set', '/camera/camera', 'configure'],
@@ -57,9 +53,9 @@ def generate_launch_description():
     )
 
     # 对应命令: ros2 lifecycle set /camera/camera activate
-    # 设置延时 1 秒 (Configure 之后 0.9 秒)，执行 activate
+    # 设置延时 5 秒 (Configure 之后 3 秒)，执行 activate
     activate_camera_cmd = TimerAction(
-        period=1.0,
+        period=10.0,
         actions=[
             ExecuteProcess(
                 cmd=['ros2', 'lifecycle', 'set', '/camera/camera', 'activate'],
@@ -91,7 +87,12 @@ def generate_launch_description():
         package='coord_transformer',
         executable='transform_node',
         name='transform_node',
-        output='screen'
+        output='screen',
+        parameters=[{
+            'x_offset': LaunchConfiguration('x_offset'),
+            'y_offset': LaunchConfiguration('y_offset'),
+            'z_offset': LaunchConfiguration('z_offset')
+        }]
     )
 
     # ==========================================
@@ -120,6 +121,8 @@ def generate_launch_description():
     # 返回 Launch 描述
     # ==========================================
     return LaunchDescription([
+        conf_thres_arg,
+        show_image_arg, 
         rs_camera_launch,
         configure_camera_cmd,
         activate_camera_cmd,
