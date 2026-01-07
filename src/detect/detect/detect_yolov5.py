@@ -113,7 +113,7 @@ class YoloDetectNode(Node):
             cx_ = self.get_parameter('camera.cx').get_parameter_value().double_value
             cy_ = self.get_parameter('camera.cy').get_parameter_value().double_value
 
-            if self.detector.centers and len(self.detector.centers) > 0 and self.depth_image is not None:
+            if hasattr(self.detector, 'centers') and len(self.detector.centers) > 0 and self.depth_image is not None:
                 for i, (cx, cy) in enumerate(self.detector.centers):
                     depth_value = self.get_depth_value(int(cx), int(cy))
                     if depth_value <= 0:
