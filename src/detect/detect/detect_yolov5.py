@@ -10,9 +10,9 @@ from ament_index_python.packages import get_package_share_directory
 from detect.bpu_infer_hobot import BPU_Detect
 from object3d_msgs.msg import Object3D, Object3DArray
 
-class ImageSubscriber(Node):
+class YoloDetectNode(Node):
     def __init__(self):
-        super().__init__('image_subscriber')
+        super().__init__('yolo_detect_node')
 
         self.declare_parameter('camera.fx', 905.5593)
         self.declare_parameter('camera.fy', 905.5208)
@@ -174,7 +174,7 @@ class ImageSubscriber(Node):
         
 def main(args=None):
     rclpy.init(args=args)
-    node = ImageSubscriber()
+    node = YoloDetectNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
