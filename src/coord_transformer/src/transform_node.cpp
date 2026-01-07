@@ -10,7 +10,7 @@ public:
     : Node("coord_transformer_node")
     {
         this->declare_parameter<double>("x_offset", 0.0);
-        this->declare_parameter<double>("y_offset", 0.05);
+        this->declare_parameter<double>("y_offset", 0.0);
         this->declare_parameter<double>("z_offset", 0.0);
         subscription_ = this->create_subscription<object3d_msgs::msg::Object3DArray>(
             "target_points_array",

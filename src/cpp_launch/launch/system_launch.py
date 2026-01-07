@@ -17,7 +17,7 @@ def generate_launch_description():
     show_image_arg = DeclareLaunchArgument('show_image', default_value='false', description='Whether to show detection image window')
 
     x_off_arg = DeclareLaunchArgument('x_offset', default_value='0.0', description='Translation in X')
-    y_off_arg = DeclareLaunchArgument('y_offset', default_value='0.0', description='Translation in Y')
+    y_off_arg = DeclareLaunchArgument('y_offset', default_value='0.05', description='Translation in Y')
     z_off_arg = DeclareLaunchArgument('z_offset', default_value='0.0', description='Translation in Z')
     # ==========================================
     # 1. RealSense 相机启动
@@ -53,7 +53,7 @@ def generate_launch_description():
     )
 
     # 对应命令: ros2 lifecycle set /camera/camera activate
-    # 设置延时 5 秒 (Configure 之后 3 秒)，执行 activate
+    # 设置延时 10 秒 (Configure 之后 5 秒)，执行 activate
     activate_camera_cmd = TimerAction(
         period=10.0,
         actions=[
@@ -121,6 +121,9 @@ def generate_launch_description():
     # 返回 Launch 描述
     # ==========================================
     return LaunchDescription([
+        x_off_arg,
+        y_off_arg,
+        z_off_arg,
         conf_thres_arg,
         show_image_arg, 
         rs_camera_launch,
