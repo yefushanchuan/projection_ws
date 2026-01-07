@@ -4,14 +4,14 @@
 #include "sensor_msgs/msg/image.hpp"
 #include "cv_bridge/cv_bridge.h"
 
-class ImageSubscriber : public rclcpp::Node
+class ImageViewerSubscriber : public rclcpp::Node
 {
 public:
-  ImageSubscriber() : Node("image_viewer_listener")
+  ImageViewerSubscriber() : Node("image_viewer_listener")
   {
     subscription_ = this->create_subscription<sensor_msgs::msg::Image>(
       "image_topic", 10,
-      std::bind(&ImageSubscriber::image_callback, this, std::placeholders::_1));
+      std::bind(&ImageViewerSubscriber::image_callback, this, std::placeholders::_1));
     // 设置窗口为全屏
     cv::namedWindow("Received Image", cv::WINDOW_NORMAL);
     cv::setWindowProperty("Received Image", cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
@@ -41,7 +41,7 @@ private:
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<ImageSubscriber>();
+  auto node = std::make_shared<ImageViewerSubscriber>();
   rclcpp::spin(node);
   rclcpp::shutdown();
   return 0;
