@@ -27,7 +27,7 @@ include_directories(include)
 
 # --- 4. 添加可执行文件 ---
 # 必须把 .h 和 .cpp 都列出来，尤其是带有 Q_OBJECT 的 .h
-add_executable(panel_node
+add_executable(control_panel_node
   src/main.cpp
   src/mainwindow.cpp
   src/rosworker.cpp
@@ -37,16 +37,16 @@ add_executable(panel_node
 )
 
 # --- 5. 链接库 ---
-target_link_libraries(panel_node
+target_link_libraries(control_panel_node
   Qt5::Widgets
   Qt5::Core
   Qt5::Gui
 )
 
-ament_target_dependencies(panel_node rclcpp std_msgs)
+ament_target_dependencies(control_panel_node rclcpp std_msgs)
 
 # --- 6. 安装 ---
-install(TARGETS panel_node
+install(TARGETS control_panel_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
