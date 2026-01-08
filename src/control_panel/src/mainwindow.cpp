@@ -111,13 +111,14 @@ void MainWindow::setupUi() {
 
 void MainWindow::onStartClicked()
 {
-    // 获取当前 CheckBox 的状态作为启动参数
     QString show_img_val = chk_show_image->isChecked() ? "true" : "false";
+    
+    // !!! 核心修改：加 'f', 2 !!!
+    // 强制把 0 转成 "0.00"，让 ROS 识别为 double 类型，防止 crash
     QString x_val = QString::number(spin_x->value(), 'f', 2);
     QString y_val = QString::number(spin_y->value(), 'f', 2);
     QString z_val = QString::number(spin_z->value(), 'f', 2);
 
-    // 构造命令：同时传入 show_image 和 初始的 offset
     QString script = QString("source /opt/ros/humble/setup.bash && "
                              "ros2 launch cpp_launch system_launch.py " 
                              "show_image:=%1 "
@@ -167,4 +168,11 @@ void MainWindow::onStopClicked()
     btn_stop->setEnabled(false);
     
     qDebug() << "System stopped and cleaned up.";
+}
+
+void MainWindow::onParamChanged(const QString &name, double value) {
+    if(ros_worker) {
+        // 调用 worker 线程去发送 ROS 参数请求
+        ros_worker->setParam(name.toStdString(), value);
+    }
 }
