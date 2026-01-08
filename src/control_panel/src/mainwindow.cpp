@@ -139,23 +139,32 @@ void MainWindow::onStartClicked()
 
 void MainWindow::onStopClicked()
 {
+    // 1. 先尝试温和地停止 Launch 脚本
     launch_process->terminate();
     
-    // 使用 QStringList 分离命令和参数
-    // "pkill" 是命令， "-f" 和 "进程名" 是参数
+    // 2. 暴力清理所有相关后台进程
+    // 这是一个“清理套餐”，确保没有任何残留
     QProcess::execute("pkill", QStringList() << "-f" << "detect_yolov5");
     QProcess::execute("pkill", QStringList() << "-f" << "transform_node");
     QProcess::execute("pkill", QStringList() << "-f" << "image_viewer");
-    QProcess::execute("pkill", QStringList() << "-f" << "camera");
+    
+    // 把 "camera" 改为 "realsense"，更精准，防止误杀其他相机软件
+    QProcess::execute("pkill", QStringList() << "-f" << "realsense"); 
+    
+    // 必须杀掉容器，这是 Realsense 卡死的主要原因
     QProcess::execute("pkill", QStringList() << "-f" << "component_container");
+    
+    // 杀掉机器人状态发布器（如果有）
     QProcess::execute("pkill", QStringList() << "-f" << "robot_state_publisher");
 
+    // 3. [强烈建议] 重置 ROS 2 守护进程
+    // 这行代码能解决 "WARNING: nodes ... share an exact name" 的问题
+    // 它会强制刷新 ROS 的节点列表缓存
+    QProcess::execute("ros2", QStringList() << "daemon" << "stop");
+
+    // 4. 恢复按钮状态
     btn_start->setEnabled(true);
     btn_stop->setEnabled(false);
-}
-
-void MainWindow::onParamChanged(const QString &name, double value) {
-    if(ros_worker) {
-        ros_worker->setParam(name.toStdString(), value);
-    }
+    
+    qDebug() << "System stopped and cleaned up.";
 }
