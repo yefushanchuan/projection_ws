@@ -140,34 +140,37 @@ void MainWindow::onStartClicked()
 
 void MainWindow::onStopClicked()
 {
-    // 1. 先尝试温和地停止 Launch 脚本
-    launch_process->terminate();
+    // 1. 停止 Launch 进程
+    if (launch_process->state() == QProcess::Running) {
+        launch_process->terminate();
+        launch_process->waitForFinished(500); // 稍微等一下
+    }
     
-    // 2. 暴力清理所有相关后台进程
-    // 这是一个“清理套餐”，确保没有任何残留
-    QProcess::execute("pkill", QStringList() << "-f" << "detect_yolov5");
-    QProcess::execute("pkill", QStringList() << "-f" << "transform_node");
-    QProcess::execute("pkill", QStringList() << "-f" << "image_viewer");
-    
-    // 把 "camera" 改为 "realsense"，更精准，防止误杀其他相机软件
-    QProcess::execute("pkill", QStringList() << "-f" << "realsense"); 
-    
-    // 必须杀掉容器，这是 Realsense 卡死的主要原因
-    QProcess::execute("pkill", QStringList() << "-f" << "component_container");
-    
-    // 杀掉机器人状态发布器（如果有）
-    QProcess::execute("pkill", QStringList() << "-f" << "robot_state_publisher");
+    // 2. 暴力清理所有相关后台进程 (建议加上 -9 强制杀死，防止进程卡在后台)
+    // pkill -9 表示 SIGKILL，立即处决，不给进程犹豫的机会
+    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "detect_yolov5");
+    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "transform_node");
+    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "image_viewer");
+    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "realsense"); 
+    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "component_container");
+    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "robot_state_publisher");
 
-    // 3. [强烈建议] 重置 ROS 2 守护进程
-    // 这行代码能解决 "WARNING: nodes ... share an exact name" 的问题
-    // 它会强制刷新 ROS 的节点列表缓存
+    // ============================================================
+    // !!! 核心修复点：清理共享内存 (Shared Memory) !!!
+    // ============================================================
+    // 这一步专门解决 [RTPS_TRANSPORT_SHM Error]
+    // 因为 rm 支持通配符(*)，必须通过 bash -c 来执行
+    QProcess::execute("bash", QStringList() << "-c" << "rm -f /dev/shm/fastrtps_*");
+
+    // 3. 重置 ROS 2 守护进程 (清除节点重名缓存)
     QProcess::execute("ros2", QStringList() << "daemon" << "stop");
+    QProcess::execute("ros2", QStringList() << "daemon" << "start"); // 顺手重启一下更好
 
     // 4. 恢复按钮状态
     btn_start->setEnabled(true);
     btn_stop->setEnabled(false);
     
-    qDebug() << "System stopped and cleaned up.";
+    qDebug() << "System stopped, processes killed, and SHM cleaned.";
 }
 
 void MainWindow::onParamChanged(const QString &name, double value) {
