@@ -8,27 +8,26 @@ from ament_index_python import get_package_share_directory
 
 def generate_launch_description():
     # ==========================================
-    # 0. 声明启动参数 (Configuration)
+    # 0. 声明启动参数
     # ==========================================
-    # 定义 conf_thres 参数，默认值 0.35
     conf_thres_arg = DeclareLaunchArgument('conf_thres', default_value='0.35', description='YOLOv5 confidence threshold')
-
-    # 定义 show_image 参数，默认值 false (注意：Launch文件中布尔值通常作为字符串传递)
     show_image_arg = DeclareLaunchArgument('show_image', default_value='false', description='Whether to show detection image window')
-
     x_off_arg = DeclareLaunchArgument('x_offset', default_value='0.0', description='Translation in X')
     y_off_arg = DeclareLaunchArgument('y_offset', default_value='0.05', description='Translation in Y')
     z_off_arg = DeclareLaunchArgument('z_offset', default_value='0.0', description='Translation in Z')
+
     # ==========================================
     # 1. RealSense 相机启动
     # ==========================================
-    # 对应命令: ros2 launch realsense2_camera rs_launch.py enable_rgbd:=true ...
     rs_camera_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(get_package_share_directory("realsense2_camera"),
                           "launch", 
                           "rs_launch.py")),
         launch_arguments={
+            'name': 'camera',
+            'namespace': 'camera',
+            'initial_reset': 'true',  # 保持这个开启，防止硬件卡死
             'enable_rgbd': 'true',
             'enable_sync': 'true',
             'align_depth.enable': 'true',
@@ -38,34 +37,59 @@ def generate_launch_description():
     )
 
     # ==========================================
-    # 2 & 3. Lifecycle 生命周期管理
+    # 2. 智能 Configure (带重试机制)
     # ==========================================
-    # 对应命令: ros2 lifecycle set /camera/camera configure
-    configure_camera_cmd = TimerAction(
-        period=2.0,
-        actions=[
-            ExecuteProcess(
-                cmd=['ros2', 'lifecycle', 'set', '/camera/camera', 'configure'],
-                output='screen'
-            )
-        ]
+    # 修复点：使用三引号包裹脚本，确保语法正确
+    configure_script = """
+        echo "Waiting for RealSense node to appear..."
+        for i in {1..30}; do
+            if ros2 node list | grep -q "/camera/camera"; then
+                echo "Node found! Configuring..."
+                sleep 2
+                ros2 lifecycle set /camera/camera configure
+                exit 0
+            fi
+            sleep 1
+        done
+        echo "Timeout waiting for camera node!"
+        exit 1
+    """
+
+    configure_camera_cmd = ExecuteProcess(
+        cmd=['bash', '-c', configure_script],
+        output='screen'
     )
 
-    # 对应命令: ros2 lifecycle set /camera/camera activate
-    activate_camera_cmd = TimerAction(
-        period=4.0,
-        actions=[
-            ExecuteProcess(
-                cmd=['ros2', 'lifecycle', 'set', '/camera/camera', 'activate'],
-                output='screen'
-            )
-        ]
+    # ==========================================
+    # 3. 智能 Activate (带等待机制)
+    # ==========================================
+    activate_script = """
+        # RealSense 的 initial_reset 需要断开 USB 再重连，过程约需 8-10 秒
+        # 我们这里等待 12 秒，避开硬件重启的真空期，防止报 null pointer 错误
+        sleep 12
+        
+        echo "Attempting to Activate..."
+        for i in {1..15}; do
+            # 检查节点状态，只在未激活时尝试激活 (可选优化，直接 set 也可以)
+            if ros2 lifecycle set /camera/camera activate; then
+                echo "Activation successful!"
+                exit 0
+            fi
+            echo "Activate failed, retrying in 2s..."
+            sleep 2
+        done
+        echo "Activation Timed Out!"
+        exit 1
+    """
+
+    activate_camera_cmd = ExecuteProcess(
+        cmd=['bash', '-c', activate_script],
+        output='screen'
     )
 
     # ==========================================
-    # 4. Detect YOLOv5 (projection_ws)
+    # 4. Detect YOLOv5
     # ==========================================
-    # 对应命令: ros2 run detect detect_yolov5
     detect_node = Node(
         package='detect',
         executable='detect_yolov5',
@@ -78,9 +102,8 @@ def generate_launch_description():
     )
 
     # ==========================================
-    # 6. Coord Transformer (projection_ws)
+    # 6. Coord Transformer
     # ==========================================
-    # 对应命令: ros2 run coord_transformer transform_node
     transform_node = Node(
         package='coord_transformer',
         executable='transform_node',
@@ -94,9 +117,8 @@ def generate_launch_description():
     )
 
     # ==========================================
-    # 7. Image Viewer Talker (projection_ws)
+    # 7. Image Viewer Talker
     # ==========================================
-    # 对应命令: ros2 run image_viewer image_viewer_talker
     viewer_talker_node = Node(
         package='image_viewer',
         executable='image_viewer_talker',
@@ -105,9 +127,8 @@ def generate_launch_description():
     )
 
     # ==========================================
-    # 8. Image Viewer Listener (projection_ws)
+    # 8. Image Viewer Listener
     # ==========================================
-    # 对应命令: ros2 run image_viewer image_viewer_listener
     viewer_listener_node = Node(
         package='image_viewer',
         executable='image_viewer_listener',
@@ -115,9 +136,6 @@ def generate_launch_description():
         output='screen'
     )
 
-    # ==========================================
-    # 返回 Launch 描述
-    # ==========================================
     return LaunchDescription([
         x_off_arg,
         y_off_arg,
