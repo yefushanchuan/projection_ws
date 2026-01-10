@@ -23,8 +23,6 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-include_directories(include)
-
 # --- 4. 添加可执行文件 ---
 # 必须把 .h 和 .cpp 都列出来，尤其是带有 Q_OBJECT 的 .h
 add_executable(control_panel_node
@@ -36,7 +34,14 @@ add_executable(control_panel_node
   include/control_panel/rosworker.h
 )
 
-# --- 5. 链接库 ---
+# --- 5. include路径 ---
+target_include_directories(control_panel_node
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+# --- 6. 链接库 ---
 target_link_libraries(control_panel_node
   Qt5::Widgets
   Qt5::Core
@@ -45,7 +50,7 @@ target_link_libraries(control_panel_node
 
 ament_target_dependencies(control_panel_node rclcpp std_msgs)
 
-# --- 6. 安装 ---
+# --- 7. 安装 ---
 install(TARGETS control_panel_node
   DESTINATION lib/${PROJECT_NAME}
 )
