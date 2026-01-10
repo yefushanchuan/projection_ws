@@ -27,7 +27,7 @@ def generate_launch_description():
         launch_arguments={
             'name': 'camera',
             'namespace': 'camera',
-            'initial_reset': 'true',  # 保持这个开启，防止硬件卡死
+            # 'initial_reset': 'true',  # 保持这个开启，防止硬件卡死
             'enable_rgbd': 'true',
             'enable_sync': 'true',
             'align_depth.enable': 'true',
@@ -64,19 +64,28 @@ def generate_launch_description():
     # 3. 智能 Activate (带等待机制)
     # ==========================================
     activate_script = """
-        # RealSense 的 initial_reset 需要断开 USB 再重连，过程约需 8-10 秒
-        # 我们这里等待 12 秒，避开硬件重启的真空期，防止报 null pointer 错误
-        sleep 12
+        echo "Waiting for camera to be Configured (inactive state)..."
         
+        # 1. 等待 Configure 完成
+        while ! ros2 lifecycle get /camera/camera | grep -q "inactive"; do
+            sleep 0.5
+        done
+
+        echo "Node is Configured."
+        
+        # 2. 修改点：既然关闭了 initial_reset，就不需要等 10 秒了
+        # 给 1-2 秒缓冲即可，确保状态切换稳定
+        sleep 2
+        
+        # 3. 开始激活
         echo "Attempting to Activate..."
-        for i in {1..15}; do
-            # 检查节点状态，只在未激活时尝试激活 (可选优化，直接 set 也可以)
+        for i in {1..10}; do
             if ros2 lifecycle set /camera/camera activate; then
                 echo "Activation successful!"
                 exit 0
             fi
-            echo "Activate failed, retrying in 2s..."
-            sleep 2
+            echo "Activate failed, retrying in 1s..."
+            sleep 1
         done
         echo "Activation Timed Out!"
         exit 1
