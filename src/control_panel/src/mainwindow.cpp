@@ -164,7 +164,7 @@ void MainWindow::onStartClicked()
                              "show_image:=%1 "
                              "x_offset:=%2 "
                              "y_offset:=%3 "
-                             "z_offset:=%4"
+                             "z_offset:=%4" 
                              "model_filename:='%5'")
                              .arg(show_img_val, x_val, y_val, z_val, model_str);
                              
