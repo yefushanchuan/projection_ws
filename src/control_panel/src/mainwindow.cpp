@@ -1,4 +1,5 @@
 #include "control_panel/mainwindow.h"
+#include <QFileDialog> 
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -20,7 +21,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     // 设置一下窗口标题
     setWindowTitle("ROS 2 Control Panel");
-    resize(400, 400);
+    resize(450, 500);
 }
 
 MainWindow::~MainWindow() {
@@ -48,62 +49,47 @@ void MainWindow::setupUi() {
     setCentralWidget(centralWidget);
     QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
 
-    // --- Launch 控制区 ---
-    QGroupBox *grpLaunch = new QGroupBox("系统控制", this);
+    // --- 系统设置区 ---
+    QGroupBox *grpLaunch = new QGroupBox("系统设置", this);
     QVBoxLayout *layLaunch = new QVBoxLayout(grpLaunch);
 
-    // --- 模型选择行 ---
+    // 1. 模型选择 (输入框 + 浏览按钮)
     QHBoxLayout *layModel = new QHBoxLayout();
     layModel->addWidget(new QLabel("模型文件:"));
 
-    // 1. 输入框 (le_model_path 在头文件声明为 QLineEdit*)
     le_model_path = new QLineEdit();
-    
-    // !!! 关键点：这里预设你的默认模型名 !!!
-    // 这样如果用户不操作，传给 ROS 的就是这个名字，触发 Python 里的“情况 B”
+    // 默认值：预设的相对路径文件名
     le_model_path->setText("yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin");
-    
-    // 设为只读，防止用户手滑删掉几个字母导致找不到文件
-    // 如果你希望用户能手输路径，可以删掉这行
-    le_model_path->setReadOnly(false); 
-    
     layModel->addWidget(le_model_path);
 
-    // 2. 浏览按钮
-    QPushButton *btn_browse = new QPushButton("浏览...");
+    btn_browse = new QPushButton("浏览...");
     connect(btn_browse, &QPushButton::clicked, [this](){
-        // 打开文件选择器
         QString fileName = QFileDialog::getOpenFileName(
             this,
             "选择模型文件",
-            "/home/sunrise", // 起始目录
+            "/home/sunrise", // 默认起始目录
             "Model Files (*.bin);;All Files (*)"
         );
-
-        // 如果用户选了文件 (不是点的取消)
         if (!fileName.isEmpty()) {
-            // !!! 关键点：用绝对路径覆盖输入框 !!!
-            // 这样传给 ROS 的就是绝对路径，触发 Python 里的“情况 A”
-            le_model_path->setText(fileName);
+            le_model_path->setText(fileName); // 填入绝对路径
         }
     });
     layModel->addWidget(btn_browse);
     layLaunch->addLayout(layModel);
 
+    // 2. 图像开关
     chk_show_image = new QCheckBox("开启检测窗口 (show_image)", this);
-    // 默认选中
-    chk_show_image->setChecked(true); 
+    chk_show_image->setChecked(true);
     layLaunch->addWidget(chk_show_image);
 
-    // !!! 新增：连接 CheckBox 的点击信号，支持运行时切换 !!!
+    // 运行时动态切换
     connect(chk_show_image, &QCheckBox::clicked, [this](bool checked){
-        // 只有当 Launch 已经启动后，点击才发送参数请求
         if(launch_process->state() == QProcess::Running && ros_worker) {
-            // 发送 1.0 代表 true, 0.0 代表 false
             ros_worker->setParam("show_image", checked ? 1.0 : 0.0);
         }
     });
 
+    // 3. 启动/停止按钮
     QHBoxLayout *layButtons = new QHBoxLayout();
     btn_start = new QPushButton("启动系统", this);
     btn_start->setStyleSheet("background-color: green; color: white;");
@@ -117,6 +103,7 @@ void MainWindow::setupUi() {
     layButtons->addWidget(btn_start);
     layButtons->addWidget(btn_stop);
     layLaunch->addLayout(layButtons);
+
     mainLayout->addWidget(grpLaunch);
 
     // --- 参数调节区 (Offset) ---
@@ -163,7 +150,7 @@ void MainWindow::onStartClicked()
     if (model_str.isEmpty()) {
         model_str = "yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin";
     }
-    
+
     QString script = QString("source /opt/ros/humble/setup.bash && "
                              "ros2 launch cpp_launch system_launch.py " 
                              "show_image:=%1 "
@@ -215,9 +202,12 @@ void MainWindow::onStopClicked()
     // 4. 恢复按钮状态
     btn_start->setEnabled(true);
     btn_stop->setEnabled(false);
-    combo_model->setEnabled(true);
-
-    qDebug() << "System stopped, processes killed, and SHM cleaned.";
+    
+    // 解锁模型选择
+    le_model_path->setEnabled(true);
+    btn_browse->setEnabled(true);
+    
+    qDebug() << "System stopped.";
 }
 
 void MainWindow::onParamChanged(const QString &name, double value) {

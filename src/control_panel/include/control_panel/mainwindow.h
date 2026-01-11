@@ -11,6 +11,8 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QDebug>
+#include <QLineEdit>
+#include <QFileDialog> 
 
 // 包含 worker 头文件
 #include "control_panel/rosworker.h"
@@ -38,7 +40,6 @@ private:
     QPushButton *btn_start;
     QPushButton *btn_stop;
     QDoubleSpinBox *spin_x, *spin_y, *spin_z;
-    QComboBox *combo_model;
     QLineEdit *le_model_path;
     QPushButton *btn_select_model;
     
