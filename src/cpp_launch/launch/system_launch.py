@@ -12,9 +12,9 @@ def generate_launch_description():
     # ==========================================
     conf_thres_arg = DeclareLaunchArgument('conf_thres', default_value='0.35', description='YOLOv5 confidence threshold')
     show_image_arg = DeclareLaunchArgument('show_image', default_value='false', description='Whether to show detection image window')
-    x_off_arg = DeclareLaunchArgument('x_offset', default_value='0.0', description='Translation in X')
-    y_off_arg = DeclareLaunchArgument('y_offset', default_value='0.05', description='Translation in Y')
-    z_off_arg = DeclareLaunchArgument('z_offset', default_value='0.0', description='Translation in Z')
+    x_off_arg = DeclareLaunchArgument('x_offset', default_value='0.00', description='Translation in X')
+    y_off_arg = DeclareLaunchArgument('y_offset', default_value='0.00', description='Translation in Y')
+    z_off_arg = DeclareLaunchArgument('z_offset', default_value='0.00', description='Translation in Z')
     model_arg = DeclareLaunchArgument('model_filename', default_value='yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin', description='Model filename inside detect/models folder')
 
     # ==========================================
