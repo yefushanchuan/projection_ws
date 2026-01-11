@@ -198,7 +198,7 @@ void MainWindow::onStopClicked()
     QProcess::execute("pkill", QStringList() << "-9" << "-f" << "detect_yolov5");
     QProcess::execute("pkill", QStringList() << "-9" << "-f" << "transform_node");
     QProcess::execute("pkill", QStringList() << "-9" << "-f" << "image_viewer");
-    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "realsense"); 
+    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "realsense2_camera_node");
     QProcess::execute("pkill", QStringList() << "-9" << "-f" << "component_container");
     QProcess::execute("pkill", QStringList() << "-9" << "-f" << "robot_state_publisher");
 
