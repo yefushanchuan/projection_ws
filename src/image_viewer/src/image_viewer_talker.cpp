@@ -21,6 +21,18 @@ public:
     this->declare_parameter<double>("cx", 640.0); 
     this->declare_parameter<double>("cy", 360.0);
     this->declare_parameter<int>("point_radius", 15);
+    this->declare_parameter<double>("min_z_threshold", 0.5);
+    this->declare_parameter<int>("image_width", 1280);
+    this->declare_parameter<int>("image_height", 720);
+
+    fx_ = this->get_parameter("fx").as_double();
+    fy_ = this->get_parameter("fy").as_double();
+    cx_ = this->get_parameter("cx").as_double();
+    cy_ = this->get_parameter("cy").as_double();
+    radius_ = this->get_parameter("point_radius").as_int();
+    min_z_ = this->get_parameter("min_z_threshold").as_double();
+    image_width_ = this->get_parameter("image_width").as_int();
+    image_height_ = this->get_parameter("image_height").as_int();
 
     image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("image_topic", 10);
 
@@ -36,14 +48,8 @@ public:
 private:
   void points_callback(const object3d_msgs::msg::Object3DArray::SharedPtr msg)
   {
-    double fx = this->get_parameter("fx").as_double();
-    double fy = this->get_parameter("fy").as_double();
-    double cx = this->get_parameter("cx").as_double();
-    double cy = this->get_parameter("cy").as_double();
-    int radius = this->get_parameter("point_radius").as_int();
-
     // 黑图初始化
-    cv::Mat image = cv::Mat::zeros(1080, 1920, CV_8UC3);
+    cv::Mat image = cv::Mat::zeros(image_height_, image_width_, CV_8UC3);
 
     for (const auto & obj : msg->objects)
     {
@@ -51,21 +57,24 @@ private:
       double Y = obj.point.y;
       double Z = obj.point.z;
 
-      // 简单的深度保护：如果 Z 太小（比如0），强制设为 1.0，防止除以0崩溃
-      // 如果你的场景是纯 2D 平面移动，Z 可能一直是 0 或 1
-      if (std::abs(Z) < 0.001) Z = 1.0; 
+      if (Z < min_z_) {
+          continue; 
+      }
 
       // --- 核心投影公式 (3D -> 2D) ---
-      // 这里的逻辑是：物体越远(Z越大)，坐标越靠近中心；fx/fy 控制放缩倍数
-      // 如果你想去掉透视效果(不管Z多远，大小位置只看XY)，就把下面的 /Z 去掉
-      int u = static_cast<int>((fx * X / Z) + cx); 
-      int v = static_cast<int>((fy * Y / Z) + cy);
+      int u = static_cast<int>((fx_ * X / Z) + cx_); 
+      int v = static_cast<int>((fy_ * Y / Z) + cy_);
+      bool is_inside = (u >= 0 && u < image_width_ && v >= 0 && v < image_height_);
 
-      // 绘制点
-      // 只要计算出的点在屏幕范围内，就画出来
-      if (u >= 0 && u < 1920 && v >= 0 && v < 1080) {
-        // 参数说明: 图像, 中心坐标, 半径(固定), 颜色(白色), 填充(-1)
-        cv::circle(image, cv::Point(u, v), radius, cv::Scalar(255, 255, 255), -1);
+      if (is_inside) {
+        // 在范围内：绘制
+        cv::circle(image, cv::Point(u, v), radius_, cv::Scalar(255, 255, 255), -1);
+      } else {
+        // 越界日志，使用 Throttle 机制防止刷屏
+        // 参数说明：logger, clock, 毫秒数, 格式化字符串...
+        // 这里设置为 2000ms (2秒) 打印一次，既能看到提示，又不至于眼花
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, 
+            "Point out of bounds: (u=%d, v=%d) | Depth Z=%.2f", u, v, Z);
       }
     }
 
@@ -84,6 +93,10 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_pub_;
   rclcpp::Subscription<object3d_msgs::msg::Object3DArray>::SharedPtr points_sub_;
   int count_;
+  double fx_, fy_, cx_, cy_;
+  int radius_;
+  double min_z_;
+  int image_width_, image_height_;
 };
 
 int main(int argc, char * argv[])

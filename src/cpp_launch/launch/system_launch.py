@@ -33,7 +33,8 @@ def generate_launch_description():
             'enable_sync': 'true',
             'align_depth.enable': 'true',
             'enable_color': 'true',
-            'enable_depth': 'true'
+            'enable_depth': 'true',
+            'log_level': 'warn' 
         }.items()
     )
 

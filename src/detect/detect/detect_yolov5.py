@@ -9,6 +9,7 @@ from ament_index_python.packages import get_package_share_directory
 #from detect.bpu_infer_custom import BPU_Detect
 from detect.bpu_infer_hobot import BPU_Detect
 from object3d_msgs.msg import Object3D, Object3DArray
+from rcl_interfaces.msg import SetParametersResult 
 
 class YoloDetectNode(Node):
     def __init__(self):
@@ -23,6 +24,12 @@ class YoloDetectNode(Node):
         self.declare_parameter('show_image', True)
         self.declare_parameter('model_filename', 'yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin')
         
+        self.camera_fx = self.get_parameter('camera.fx').get_parameter_value().double_value
+        self.camera_fy = self.get_parameter('camera.fy').get_parameter_value().double_value
+        self.camera_cx = self.get_parameter('camera.cx').get_parameter_value().double_value
+        self.camera_cy = self.get_parameter('camera.cy').get_parameter_value().double_value
+        self.show_image_flag = self.get_parameter('show_image').get_parameter_value().bool_value
+
         self.create_subscription(
             Image,
             '/camera/camera/color/image_raw',
@@ -45,6 +52,7 @@ class YoloDetectNode(Node):
         self.frame_count = 0
         self.start_time = time.time()
         self.fps = 0.0
+        self.fps_log_counter = 0
 
         self.labelname = [
         "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light", 
@@ -87,11 +95,18 @@ class YoloDetectNode(Node):
             is_save = False
             )
 
+    def parameter_callback(self, params):
+        for param in params:
+            if param.name == 'show_image':
+                if param.type_ == param.Type.BOOL:
+                    self.show_image_flag = param.value
+                    # self.get_logger().info(f"Updated show_image to: {self.show_image_flag}")
+        return SetParametersResult(successful=True)
+
     def listener_callback(self, msg):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-            
-            show_img = self.get_parameter('show_image').get_parameter_value().bool_value
+            show_img = self.show_image_flag
             
             self.frame_count += 1
             curr_time = time.time()
@@ -101,8 +116,9 @@ class YoloDetectNode(Node):
                 self.fps = self.frame_count / elapsed_time
                 self.frame_count = 0
                 self.start_time = curr_time
-
-                if not show_img:
+                
+                self.fps_log_counter += 1
+                if not show_img and (self.fps_log_counter % 5 == 0):
                     self.get_logger().info(f"Current FPS: {self.fps:.2f}")
 
             if show_img:
@@ -112,12 +128,12 @@ class YoloDetectNode(Node):
             self.detector.detect(cv_image, show_img=show_img)
 
             array_msg = Object3DArray()
-            array_msg.header = msg.header 
+            array_msg.header = msg.header
 
-            fx = self.get_parameter('camera.fx').get_parameter_value().double_value
-            fy = self.get_parameter('camera.fy').get_parameter_value().double_value
-            cx_ = self.get_parameter('camera.cx').get_parameter_value().double_value
-            cy_ = self.get_parameter('camera.cy').get_parameter_value().double_value
+            fx = self.camera_fx
+            fy = self.camera_fy
+            cx_ = self.camera_cx
+            cy_ = self.camera_cy
 
             if hasattr(self.detector, 'centers') and len(self.detector.centers) > 0 and self.depth_image is not None:
                 for i, (cx, cy) in enumerate(self.detector.centers):
@@ -153,7 +169,6 @@ class YoloDetectNode(Node):
                     
                 if len(array_msg.objects) > 0:
                     self.publisher_.publish(array_msg)
-                    self.get_logger().info(f"发布了一帧数据，包含 {len(array_msg.objects)} 个目标")
 
         except Exception as e:  
             self.get_logger().error(f"Failed to convert image: {e}")
@@ -175,7 +190,7 @@ class YoloDetectNode(Node):
             else:
                 return -1  # 0深度也返回-1
         else:
-            self.get_logger().warn(f"Invalid coordinates ({cx}, {cy}) for depth image")
+            self.get_logger().debug(f"Invalid coordinates ({cx}, {cy}) for depth image")
             return -1
         
 def main(args=None):

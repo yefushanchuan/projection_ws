@@ -39,14 +39,7 @@ void RosWorker::setParam(const std::string &name, double value)
         // 逻辑转换：Qt传递过来的是 1.0 或 0.0，转为 bool
         bool bool_val = (value > 0.5);
 
-        client_detect_->set_parameters(
-            {rclcpp::Parameter("show_image", bool_val)}, 
-            [this, bool_val](std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>> future) {
-                (void)future;
-                // 回调处理
-                RCLCPP_INFO(node_->get_logger(), "Set show_image to %s", bool_val ? "true" : "false");
-            }
-        );
+        client_detect_->set_parameters({rclcpp::Parameter("show_image", bool_val)});
     }
     
     // ==========================================
@@ -58,13 +51,7 @@ void RosWorker::setParam(const std::string &name, double value)
              return;
         }
 
-        client_transform_->set_parameters(
-            {rclcpp::Parameter(name, value)},
-            [this, name](std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>> future) {
-                (void)future;
-                RCLCPP_INFO(node_->get_logger(), "Set %s success", name.c_str());
-            }
-        );
+        client_transform_->set_parameters({rclcpp::Parameter(name, value)});
     }
     else {
         RCLCPP_WARN(node_->get_logger(), "Unknown param received: %s", name.c_str());
