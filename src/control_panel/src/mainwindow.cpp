@@ -17,6 +17,9 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // 3. 构建界面
+    QFont globalFont = this->font();
+    globalFont.setPointSize(12);
+    this->setFont(globalFont); 
     setupUi();
     
     // 设置一下窗口标题
