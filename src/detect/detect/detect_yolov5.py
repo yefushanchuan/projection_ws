@@ -22,7 +22,7 @@ class YoloDetectNode(Node):
 
         self.declare_parameter('conf_thres', 0.35)
         self.declare_parameter('show_image', True)
-        self.declare_parameter('model_filename', 'yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin')
+        self.declare_parameter('model_filename', 'yolov5x_tag_v7.0_detect_640x640_bayese_nv12.bin')
         
         self.camera_fx = self.get_parameter('camera.fx').get_parameter_value().double_value
         self.camera_fy = self.get_parameter('camera.fy').get_parameter_value().double_value

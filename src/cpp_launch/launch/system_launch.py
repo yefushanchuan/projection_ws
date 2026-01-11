@@ -15,7 +15,7 @@ def generate_launch_description():
     x_off_arg = DeclareLaunchArgument('x_offset', default_value='0.00', description='Translation in X')
     y_off_arg = DeclareLaunchArgument('y_offset', default_value='0.00', description='Translation in Y')
     z_off_arg = DeclareLaunchArgument('z_offset', default_value='0.00', description='Translation in Z')
-    model_arg = DeclareLaunchArgument('model_filename', default_value='yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin', description='Model filename inside detect/models folder')
+    model_arg = DeclareLaunchArgument('model_filename', default_value='yolov5x_tag_v7.0_detect_640x640_bayese_nv12.bin', description='Model filename inside detect/models folder')
 
     # ==========================================
     # 1. RealSense 相机启动
