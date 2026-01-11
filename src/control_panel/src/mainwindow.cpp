@@ -21,7 +21,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     // 设置一下窗口标题
     setWindowTitle("ROS 2 Control Panel");
-    resize(450, 500);
+    resize(500, 400);
 }
 
 MainWindow::~MainWindow() {
@@ -53,60 +53,69 @@ void MainWindow::setupUi() {
     QGroupBox *grpLaunch = new QGroupBox("系统设置", this);
     QVBoxLayout *layLaunch = new QVBoxLayout(grpLaunch);
 
-    // 1. 模型选择 (输入框 + 浏览按钮)
+    // ==========================================
+    // 1. 第一排：模型选择
+    // ==========================================
     QHBoxLayout *layModel = new QHBoxLayout();
     layModel->addWidget(new QLabel("模型文件:"));
 
     le_model_path = new QLineEdit();
-    // 默认值：预设的相对路径文件名
     le_model_path->setText("yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin");
     layModel->addWidget(le_model_path);
 
     btn_browse = new QPushButton("浏览...");
     connect(btn_browse, &QPushButton::clicked, [this](){
         QString fileName = QFileDialog::getOpenFileName(
-            this,
-            "选择模型文件",
-            "/home/sunrise", // 默认起始目录
-            "Model Files (*.bin);;All Files (*)"
+            this, "选择模型文件", "/home/sunrise", "Model Files (*.bin);;All Files (*)"
         );
         if (!fileName.isEmpty()) {
-            le_model_path->setText(fileName); // 填入绝对路径
+            le_model_path->setText(fileName);
         }
     });
     layModel->addWidget(btn_browse);
     layLaunch->addLayout(layModel);
 
-    // 2. 图像开关
-    chk_show_image = new QCheckBox("开启检测窗口 (show_image)", this);
-    chk_show_image->setChecked(true);
-    layLaunch->addWidget(chk_show_image);
+    // ==========================================
+    // 2. 第二排：检测开关 + 启动 + 停止
+    // ==========================================
+    QHBoxLayout *layActions = new QHBoxLayout();
 
-    // 运行时动态切换
+    // (A) 检测窗口开关
+    chk_show_image = new QCheckBox("同时显示识别图像", this);
+    chk_show_image->setChecked(true);
+    // 动态切换连接
     connect(chk_show_image, &QCheckBox::clicked, [this](bool checked){
         if(launch_process->state() == QProcess::Running && ros_worker) {
             ros_worker->setParam("show_image", checked ? 1.0 : 0.0);
         }
     });
+    layActions->addWidget(chk_show_image);
 
-    // 3. 启动/停止按钮
-    QHBoxLayout *layButtons = new QHBoxLayout();
-    btn_start = new QPushButton("启动系统", this);
-    btn_start->setStyleSheet("background-color: green; color: white;");
+    layActions->addStretch();
+
+    // (B) 启动按钮
+    btn_start = new QPushButton("启 动 系 统", this);
+    btn_start->setMinimumWidth(150); 
+    btn_start->setStyleSheet("background-color: green; color: white; font-weight: bold;");
     connect(btn_start, &QPushButton::clicked, this, &MainWindow::onStartClicked);
+    layActions->addWidget(btn_start);
 
-    btn_stop = new QPushButton("停止系统", this);
-    btn_stop->setStyleSheet("background-color: red; color: white;");
+    // (C) 停止按钮
+    btn_stop = new QPushButton("停 止 系 统", this);
+    btn_stop->setMinimumWidth(150); 
+    btn_stop->setStyleSheet("background-color: red; color: white; font-weight: bold;");
     btn_stop->setEnabled(false);
     connect(btn_stop, &QPushButton::clicked, this, &MainWindow::onStopClicked);
+    layActions->addWidget(btn_stop);
 
-    layButtons->addWidget(btn_start);
-    layButtons->addWidget(btn_stop);
-    layLaunch->addLayout(layButtons);
+    // 将这一排加入到 GroupBox
+    layLaunch->addLayout(layActions);
 
     mainLayout->addWidget(grpLaunch);
 
-    // --- 参数调节区 (Offset) ---
+    // ==========================================
+    // 3. 参数调节区
+    // ==========================================
     QGroupBox *grpParam = new QGroupBox("坐标偏移调节", this);
     QVBoxLayout *layParam = new QVBoxLayout(grpParam);
 
@@ -114,22 +123,21 @@ void MainWindow::setupUi() {
         QHBoxLayout *row = new QHBoxLayout();
         row->addWidget(new QLabel(label));
         spinBox = new QDoubleSpinBox();
-        spinBox->setRange(-5.0, 5.0); // 根据实际需要调整范围
-        spinBox->setSingleStep(0.01);  // 步长
+        spinBox->setRange(-1.0, 1.0);
+        spinBox->setSingleStep(0.01);
         spinBox->setValue(defaultVal);
         row->addWidget(spinBox);
         layParam->addLayout(row);
 
-        // 值改变 -> 触发 setParam
         connect(spinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), 
             [this, paramName](double val){
                 this->onParamChanged(paramName, val);
             });
     };
 
-    createRow("X Offset (左右):", "x_offset", 0.0, spin_x);
-    createRow("Y Offset (上下):", "y_offset", 0.0, spin_y); // 注意：你的 launch 默认好像是 0.05
-    createRow("Z Offset (前后):", "z_offset", 0.0, spin_z);
+    createRow("X Offset:", "x_offset", 0.00, spin_x);
+    createRow("Y Offset:", "y_offset", 0.00, spin_y);
+    createRow("Z Offset:", "z_offset", 0.00, spin_z);
 
     mainLayout->addWidget(grpParam);
 }
