@@ -157,9 +157,9 @@ void MainWindow::onStartClicked()
                              "x_offset:=%2 "
                              "y_offset:=%3 "
                              "z_offset:=%4"
-                             " model_filename:=%5")
-                             .arg(show_img_val, x_val, y_val, z_val);
-
+                             "model_filename:='%5'")
+                             .arg(show_img_val, x_val, y_val, z_val, model_str);
+                             
     qDebug() << "Executing:" << script;
 
     launch_process->start("bash", QStringList() << "-c" << script);
@@ -167,8 +167,11 @@ void MainWindow::onStartClicked()
     btn_start->setEnabled(false);
     btn_stop->setEnabled(true);
     
-    // !!! 关键修改：启动后不要禁用 CheckBox，允许用户运行时开关窗口 !!!
     chk_show_image->setEnabled(true); 
+    
+    // 建议启动后锁定模型选择，防止误触
+    le_model_path->setEnabled(false);
+    btn_browse->setEnabled(false);
 }
 
 void MainWindow::onStopClicked()
