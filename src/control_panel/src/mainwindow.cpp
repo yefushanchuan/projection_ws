@@ -60,7 +60,7 @@ void MainWindow::setupUi() {
     layModel->addWidget(new QLabel("模型文件:"));
 
     le_model_path = new QLineEdit();
-    le_model_path->setText("yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin");
+    le_model_path->setPlaceholderText("yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin");
     layModel->addWidget(le_model_path);
 
     btn_browse = new QPushButton("浏览...");
@@ -152,22 +152,20 @@ void MainWindow::onStartClicked()
     QString y_val = QString::number(spin_y->value(), 'f', 2);
     QString z_val = QString::number(spin_z->value(), 'f', 2);
 
-    QString model_str = le_model_path->text();
-    
-    // 如果用户把输入框清空了，给他设回默认值防止报错
-    if (model_str.isEmpty()) {
-        model_str = "yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin";
-    }
+    QString model_str = le_model_path->text().trimmed();
 
     QString script = QString("source /opt/ros/humble/setup.bash && "
                              "ros2 launch cpp_launch system_launch.py " 
                              "show_image:=%1 "
                              "x_offset:=%2 "
                              "y_offset:=%3 "
-                             "z_offset:=%4 "
-                             "model_filename:='%5'")
-                             .arg(show_img_val, x_val, y_val, z_val, model_str);
-                             
+                             "z_offset:=%4 ")
+                             .arg(show_img_val, x_val, y_val, z_val);
+
+    if (!model_str.isEmpty()) {
+        script += QString("model_filename:='%1'").arg(model_str);
+    }
+    
     qDebug() << "Executing:" << script;
 
     launch_process->start("bash", QStringList() << "-c" << script);

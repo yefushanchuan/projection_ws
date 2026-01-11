@@ -77,7 +77,7 @@ class YoloDetectNode(Node):
                 self.get_logger().error(f"自定义路径模型不存在: {model_path}")
                 # 可以在这里做容错处理，比如回退到默认模型
         else:
-            # 情况 B: 用户没改 Qt 输入框，传过来的是默认文件名 (例如: yolov5n_tag...bin)
+            # 情况 B: 用户没改 Qt 输入框，传过来的是默认文件名
             try:
                 pkg_path = get_package_share_directory('detect')
                 model_path = os.path.join(pkg_path, 'models', model_filename)
@@ -107,7 +107,7 @@ class YoloDetectNode(Node):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             show_img = self.show_image_flag
-            
+
             self.frame_count += 1
             curr_time = time.time()
             elapsed_time = curr_time - self.start_time
