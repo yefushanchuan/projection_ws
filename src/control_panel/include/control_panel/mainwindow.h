@@ -38,7 +38,10 @@ private:
     QPushButton *btn_start;
     QPushButton *btn_stop;
     QDoubleSpinBox *spin_x, *spin_y, *spin_z;
-
+    QComboBox *combo_model;
+    QLineEdit *le_model_path;
+    QPushButton *btn_select_model;
+    
     // ROS 工作线程
     RosWorker *ros_worker;
 };

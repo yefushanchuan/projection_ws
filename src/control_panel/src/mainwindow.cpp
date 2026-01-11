@@ -51,7 +51,45 @@ void MainWindow::setupUi() {
     // --- Launch 控制区 ---
     QGroupBox *grpLaunch = new QGroupBox("系统控制", this);
     QVBoxLayout *layLaunch = new QVBoxLayout(grpLaunch);
+
+    // --- 模型选择行 ---
+    QHBoxLayout *layModel = new QHBoxLayout();
+    layModel->addWidget(new QLabel("模型文件:"));
+
+    // 1. 输入框 (le_model_path 在头文件声明为 QLineEdit*)
+    le_model_path = new QLineEdit();
     
+    // !!! 关键点：这里预设你的默认模型名 !!!
+    // 这样如果用户不操作，传给 ROS 的就是这个名字，触发 Python 里的“情况 B”
+    le_model_path->setText("yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin");
+    
+    // 设为只读，防止用户手滑删掉几个字母导致找不到文件
+    // 如果你希望用户能手输路径，可以删掉这行
+    le_model_path->setReadOnly(false); 
+    
+    layModel->addWidget(le_model_path);
+
+    // 2. 浏览按钮
+    QPushButton *btn_browse = new QPushButton("浏览...");
+    connect(btn_browse, &QPushButton::clicked, [this](){
+        // 打开文件选择器
+        QString fileName = QFileDialog::getOpenFileName(
+            this,
+            "选择模型文件",
+            "/home/sunrise", // 起始目录
+            "Model Files (*.bin);;All Files (*)"
+        );
+
+        // 如果用户选了文件 (不是点的取消)
+        if (!fileName.isEmpty()) {
+            // !!! 关键点：用绝对路径覆盖输入框 !!!
+            // 这样传给 ROS 的就是绝对路径，触发 Python 里的“情况 A”
+            le_model_path->setText(fileName);
+        }
+    });
+    layModel->addWidget(btn_browse);
+    layLaunch->addLayout(layModel);
+
     chk_show_image = new QCheckBox("开启检测窗口 (show_image)", this);
     // 默认选中
     chk_show_image->setChecked(true); 
@@ -119,12 +157,20 @@ void MainWindow::onStartClicked()
     QString y_val = QString::number(spin_y->value(), 'f', 2);
     QString z_val = QString::number(spin_z->value(), 'f', 2);
 
+    QString model_str = le_model_path->text();
+    
+    // 如果用户把输入框清空了，给他设回默认值防止报错
+    if (model_str.isEmpty()) {
+        model_str = "yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin";
+    }
+    
     QString script = QString("source /opt/ros/humble/setup.bash && "
                              "ros2 launch cpp_launch system_launch.py " 
                              "show_image:=%1 "
                              "x_offset:=%2 "
                              "y_offset:=%3 "
-                             "z_offset:=%4")
+                             "z_offset:=%4"
+                             " model_filename:=%5")
                              .arg(show_img_val, x_val, y_val, z_val);
 
     qDebug() << "Executing:" << script;
@@ -169,7 +215,8 @@ void MainWindow::onStopClicked()
     // 4. 恢复按钮状态
     btn_start->setEnabled(true);
     btn_stop->setEnabled(false);
-    
+    combo_model->setEnabled(true);
+
     qDebug() << "System stopped, processes killed, and SHM cleaned.";
 }
 
