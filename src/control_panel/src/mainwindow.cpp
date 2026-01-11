@@ -123,10 +123,14 @@ void MainWindow::setupUi() {
     auto createRow = [&](const QString &label, const QString &paramName, double defaultVal, QDoubleSpinBox* &spinBox) {
         QHBoxLayout *row = new QHBoxLayout();
         row->addWidget(new QLabel(label));
+        
         spinBox = new QDoubleSpinBox();
         spinBox->setRange(-1.0, 1.0);
         spinBox->setSingleStep(0.01);
         spinBox->setValue(defaultVal);
+        
+        spinBox->setSuffix(" 米"); 
+
         row->addWidget(spinBox);
         layParam->addLayout(row);
 
