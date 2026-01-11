@@ -21,9 +21,7 @@ class YoloDetectNode(Node):
 
         self.declare_parameter('conf_thres', 0.35)
         self.declare_parameter('show_image', True)
-
-        default_model = 'yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin'
-        self.declare_parameter('model_filename', default_model)
+        self.declare_parameter('model_filename', 'yolov5n_tag_v7.0_detect_640x640_bayese_nv12.bin')
         
         self.create_subscription(
             Image,
@@ -62,16 +60,24 @@ class YoloDetectNode(Node):
         conf_val = self.get_parameter('conf_thres').get_parameter_value().double_value
         
         model_filename = self.get_parameter('model_filename').get_parameter_value().string_value
+        
+        #  !!! 智能路径判断逻辑 !!!
+        if os.path.isabs(model_filename):
+            # 情况 A: 用户在 Qt 里选了文件 (例如: /home/sunrise/my_models/best.bin)
+            model_path = model_filename
+            if not os.path.exists(model_path):
+                self.get_logger().error(f"自定义路径模型不存在: {model_path}")
+                # 可以在这里做容错处理，比如回退到默认模型
+        else:
+            # 情况 B: 用户没改 Qt 输入框，传过来的是默认文件名 (例如: yolov5n_tag...bin)
+            try:
+                pkg_path = get_package_share_directory('detect')
+                model_path = os.path.join(pkg_path, 'models', model_filename)
+            except Exception as e:
+                self.get_logger().error(f"查找功能包路径失败: {e}")
+                model_path = ""
 
-        try:
-            pkg_path = get_package_share_directory('detect')
-            model_path = os.path.join(pkg_path, 'models', model_filename)
-            
-            self.get_logger().info(f"正在加载模型: {model_filename}")
-            self.get_logger().info(f"置信度阈值: {conf_val}")
-        except Exception as e:
-            self.get_logger().error(f"路径获取失败: {e}")
-            model_path = ""
+        self.get_logger().info(f"正在加载模型: {model_path}")
 
         self.detector = BPU_Detect(
             model_path = model_path,
