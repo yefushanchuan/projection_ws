@@ -21,7 +21,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     // 设置一下窗口标题
     setWindowTitle("ROS 2 Control Panel");
-    resize(400, 300);
+    resize(300, 300);
 }
 
 MainWindow::~MainWindow() {
@@ -60,7 +60,7 @@ void MainWindow::setupUi() {
     layModel->addWidget(new QLabel("模型文件:"));
 
     le_model_path = new QLineEdit();
-    le_model_path->setPlaceholderText("Default:yolov5x_tag_v7.0_detect_640x640_bayese_nv12.bin");
+    le_model_path->setPlaceholderText("Default : yolov5x_tag_v7.0_detect_640x640_bayese_nv12.bin");
     layModel->addWidget(le_model_path);
 
     btn_browse = new QPushButton("浏览...");
@@ -96,14 +96,14 @@ void MainWindow::setupUi() {
 
     // (B) 启动按钮
     btn_start = new QPushButton("启 动 系 统", this);
-    btn_start->setMinimumWidth(150); 
+    btn_start->setMinimumWidth(100); 
     btn_start->setStyleSheet("background-color: green; color: white; font-weight: bold;");
     connect(btn_start, &QPushButton::clicked, this, &MainWindow::onStartClicked);
     layActions->addWidget(btn_start);
 
     // (C) 停止按钮
     btn_stop = new QPushButton("停 止 系 统", this);
-    btn_stop->setMinimumWidth(150); 
+    btn_stop->setMinimumWidth(100); 
     btn_stop->setStyleSheet("background-color: red; color: white; font-weight: bold;");
     btn_stop->setEnabled(false);
     connect(btn_stop, &QPushButton::clicked, this, &MainWindow::onStopClicked);
@@ -124,12 +124,14 @@ void MainWindow::setupUi() {
         QHBoxLayout *row = new QHBoxLayout();
         row->addWidget(new QLabel(label));
         
+        row->addStretch(); 
+
         spinBox = new QDoubleSpinBox();
         spinBox->setRange(-1.0, 1.0);
         spinBox->setSingleStep(0.01);
         spinBox->setValue(defaultVal);
-        
         spinBox->setSuffix(" 米"); 
+        spinBox->setFixedWidth(100); 
 
         row->addWidget(spinBox);
         layParam->addLayout(row);
