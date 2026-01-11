@@ -21,7 +21,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     // 设置一下窗口标题
     setWindowTitle("ROS 2 Control Panel");
-    resize(500, 400);
+    resize(400, 300);
 }
 
 MainWindow::~MainWindow() {
@@ -64,6 +64,7 @@ void MainWindow::setupUi() {
     layModel->addWidget(le_model_path);
 
     btn_browse = new QPushButton("浏览...");
+    btn_browse->setMaximumWidth(50); 
     connect(btn_browse, &QPushButton::clicked, [this](){
         QString fileName = QFileDialog::getOpenFileName(
             this, "选择模型文件", "/home/sunrise", "Model Files (*.bin);;All Files (*)"
@@ -135,9 +136,9 @@ void MainWindow::setupUi() {
             });
     };
 
-    createRow("X Offset:", "x_offset", 0.00, spin_x);
-    createRow("Y Offset:", "y_offset", 0.00, spin_y);
-    createRow("Z Offset:", "z_offset", 0.00, spin_z);
+    createRow("X Offset (正即相机相对投影向左):", "x_offset", 0.00, spin_x);
+    createRow("Y Offset (正即相机相对投影向上):", "y_offset", 0.00, spin_y);
+    createRow("Z Offset (正即相机相对投影向后):", "z_offset", 0.00, spin_z);
 
     mainLayout->addWidget(grpParam);
 }
