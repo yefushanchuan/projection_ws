@@ -26,7 +26,7 @@ public:
         // =======================================================================
         // 1. 先声明参数 (必须放在 Init() 之前 ！！！)
         // =======================================================================
-        this->declare_parameter("model_filename", "/home/sunrise/projection_ws/src/segment/models/yolov8n_seg_bayese_640x640_nv12.bin");
+        this->declare_parameter("model_filename", "/home/sunrise/projection_ws/src/segment/models/yolo11x_seg_bayese_640x640_nv12.bin");
 
         // =======================================================================
         // 2. 再初始化 DNN (Init 会调用 SetNodePara 读取上面的参数)
