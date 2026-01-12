@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Projection
+Comment=ROS2 Qt Control Panel
+Exec=bash -c "source /opt/ros/humble/setup.bash && source /home/sunrise/realsense_ws/install/setup.bash && source /home/sunrise/projection_ws/install/setup.bash && ros2 run control_panel control_panel_node"
+Icon=face-glasses
+Terminal=true
+StartupNotify=true
+Categories=Development;
