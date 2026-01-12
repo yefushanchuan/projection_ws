@@ -5,6 +5,7 @@
 #include "dnn_node/util/image_proc.h"
 #include <opencv2/opencv.hpp>
 #include <chrono>
+#include <opencv2/highgui/highgui.hpp>
 
 // 引入你的分割解析器头文件
 #include "segment/yolo_seg_node.h"
@@ -78,66 +79,74 @@ protected:
         std::vector<yolo_seg::SegResult> results;
         parser_->Parse(node_output->output_tensors, model_input_h_, model_input_w_, results);
         
-        // 3. 计算 FPS (核心修改逻辑在这里)
+        // 3. 计算 FPS
         UpdateFPS();
 
         // 4. 绘制结果
-        if (pub_->get_subscription_count() > 0) {
-            // 这里拿到的就是 1280x720 的图
-            cv::Mat draw_img = yolo_output->src_img->clone();
-            
-            // 计算原图(1280x720)和模型输入(640x640)的缩放比例
-            float x_scale = (float)draw_img.cols / model_input_w_;
-            float y_scale = (float)draw_img.rows / model_input_h_;
+        // 准备一张用于画图的 Mat (从原图深拷贝)
+        cv::Mat draw_img = yolo_output->src_img->clone();
+        
+        // 计算缩放比例
+        float x_scale = (float)draw_img.cols / model_input_w_;
+        float y_scale = (float)draw_img.rows / model_input_h_;
 
-            for (const auto& res : results) {
-                // A. 颜色
-                cv::Scalar color = GetColor(res.id);
+        for (const auto& res : results) {
+            // A. 颜色
+            cv::Scalar color = GetColor(res.id);
 
-                // B. 处理 Mask 
-                // 将 640x640 的 mask 缩放到 1280x720
-                cv::Mat mask_resized;
-                if (res.mask.size() != draw_img.size()) {
-                    cv::resize(res.mask, mask_resized, draw_img.size(), 0, 0, cv::INTER_NEAREST);
-                } else {
-                    mask_resized = res.mask;
-                }
-
-                // C. 绘制半透明 Mask
-                cv::Mat color_mask(draw_img.size(), CV_8UC3, color);
-                cv::Mat roi;
-                draw_img.copyTo(roi, mask_resized);
-                cv::addWeighted(roi, 0.6, color_mask, 0.4, 0.0, roi);
-                roi.copyTo(draw_img, mask_resized);
-
-                // D. 绘制检测框 (坐标映射)
-                cv::Rect rect_scaled;
-                rect_scaled.x = res.box.x * x_scale;
-                rect_scaled.y = res.box.y * y_scale;
-                rect_scaled.width = res.box.width * x_scale;
-                rect_scaled.height = res.box.height * y_scale;
-                
-                cv::rectangle(draw_img, rect_scaled, color, 2);
-
-                // E. 绘制标签
-                std::string label = res.class_name + " " + std::to_string((int)(res.score * 100)) + "%";
-                int baseLine;
-                cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.6, 2, &baseLine);
-                cv::Point top(rect_scaled.x, rect_scaled.y);
-                cv::Point bottom(rect_scaled.x + labelSize.width, top.y + labelSize.height + baseLine);
-                
-                cv::rectangle(draw_img, top, bottom, color, -1);
-                cv::putText(draw_img, label, cv::Point(rect_scaled.x, rect_scaled.y + labelSize.height),
-                            cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255), 2);
+            // B. 处理 Mask 
+            cv::Mat mask_resized;
+            if (res.mask.size() != draw_img.size()) {
+                cv::resize(res.mask, mask_resized, draw_img.size(), 0, 0, cv::INTER_NEAREST);
+            } else {
+                mask_resized = res.mask;
             }
 
-            // F. 绘制 FPS (使用成员变量 fps_)
-            // 绿色加粗字体
-            std::string fps_text = "FPS: " + std::to_string((int)fps_);
-            cv::putText(draw_img, fps_text, cv::Point(20, 50), 
-                        cv::FONT_HERSHEY_SIMPLEX, 1.2, cv::Scalar(0, 255, 0), 3);
+            // C. 绘制半透明 Mask
+            cv::Mat color_mask(draw_img.size(), CV_8UC3, color);
+            cv::Mat roi;
+            draw_img.copyTo(roi, mask_resized);
+            cv::addWeighted(roi, 0.6, color_mask, 0.4, 0.0, roi);
+            roi.copyTo(draw_img, mask_resized);
 
-            // 5. 发布图像
+            // D. 绘制检测框
+            cv::Rect rect_scaled;
+            rect_scaled.x = res.box.x * x_scale;
+            rect_scaled.y = res.box.y * y_scale;
+            rect_scaled.width = res.box.width * x_scale;
+            rect_scaled.height = res.box.height * y_scale;
+            
+            cv::rectangle(draw_img, rect_scaled, color, 2);
+
+            // E. 绘制标签
+            std::string label = res.class_name + " " + std::to_string((int)(res.score * 100)) + "%";
+            cv::putText(draw_img, label, cv::Point(rect_scaled.x, rect_scaled.y - 5),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255), 2);
+        }
+
+        // F. 绘制 FPS
+        std::string fps_text = "FPS: " + std::to_string((int)fps_);
+        cv::putText(draw_img, fps_text, cv::Point(20, 50), 
+                    cv::FONT_HERSHEY_SIMPLEX, 1.2, cv::Scalar(0, 255, 0), 3);
+
+        // ==========================================================
+        // !!! 全屏显示逻辑 !!!
+        // ==========================================================
+        std::string win_name = "YOLOv11 Seg Visualization";
+
+        // 只在第一次运行时设置全屏属性，避免每帧重复设置导致闪烁
+        if (!window_created_) {
+            cv::namedWindow(win_name, cv::WINDOW_NORMAL); // 允许自由调整大小
+            cv::setWindowProperty(win_name, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN); // 设置全屏属性
+            window_created_ = true;
+        }
+
+        cv::imshow(win_name, draw_img);
+        cv::waitKey(1);
+        // ==========================================================
+
+        // 5. 发布图像 (保留这个，方便远程调试)
+        if (pub_->get_subscription_count() > 0) {
             std_msgs::msg::Header header = *(node_output->msg_header);
             auto msg = cv_bridge::CvImage(header, "bgr8", draw_img).toImageMsg();
             pub_->publish(*msg);
@@ -149,6 +158,7 @@ protected:
 private:
     int model_input_w_ = 0;
     int model_input_h_ = 0;
+    bool window_created_ = false; 
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_;
     std::shared_ptr<yolo_seg::Parser> parser_;
