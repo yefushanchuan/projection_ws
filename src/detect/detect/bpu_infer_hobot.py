@@ -1,11 +1,6 @@
 import cv2
 import numpy as np
-from scipy.special import softmax
-from scipy.special import expit as sigmoid
-from time import time
 from hobot_dnn import pyeasy_dnn as dnn
-from typing import Tuple
-import os
 
 class BPU_Detect:
     def __init__(self, model_path:str,

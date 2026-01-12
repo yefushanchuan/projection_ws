@@ -8,7 +8,6 @@ import time
 from ament_index_python.packages import get_package_share_directory
 #from detect.bpu_infer_custom import BPU_Detect
 from detect.bpu_infer_hobot import BPU_Detect
-from object3d_msgs.msg import Object3D, Object3DArray
 from rcl_interfaces.msg import SetParametersResult 
 
 class YoloDetectNode(Node):
