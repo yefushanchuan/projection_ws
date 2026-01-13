@@ -13,6 +13,8 @@
 #include <QDebug>
 #include <QLineEdit>
 #include <QFileDialog> 
+#include <QStatusBar>
+#include <QMessageBox>
 
 // 包含 worker 头文件
 #include "control_panel/rosworker.h"
