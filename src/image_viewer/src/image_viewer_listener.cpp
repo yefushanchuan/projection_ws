@@ -12,9 +12,13 @@ public:
     subscription_ = this->create_subscription<sensor_msgs::msg::Image>(
       "image_topic", 10,
       std::bind(&ImageViewerSubscriber::image_callback, this, std::placeholders::_1));
-    // 设置窗口为全屏
-    cv::namedWindow("Received Image", cv::WINDOW_NORMAL);
-    cv::setWindowProperty("Received Image", cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
+      
+    // 初始化窗口
+    window_name_ = "Received Image";
+    cv::namedWindow(window_name_, cv::WINDOW_NORMAL);
+    cv::setWindowProperty(window_name_, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
+    
+    RCLCPP_INFO(this->get_logger(), "ImageViewer Listener started (Fullscreen Mode).");
   }
 
 private:
@@ -22,12 +26,14 @@ private:
   {
     try
     {
-      // 转换ROS图像消息到OpenCV格式
+      // 零拷贝转换 (toCvShare 更高效)
       cv::Mat image = cv_bridge::toCvShare(msg, "bgr8")->image;
 
-      // 显示图像
-      cv::imshow("Received Image", image);
-      cv::waitKey(1);  // 必须调用，处理窗口事件
+      // 只有图像非空才显示
+      if (!image.empty()) {
+          cv::imshow(window_name_, image);
+          cv::waitKey(1); 
+      }
     }
     catch (cv_bridge::Exception & e)
     {
@@ -35,6 +41,7 @@ private:
     }
   }
 
+  std::string window_name_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr subscription_;
 };
 
@@ -43,6 +50,10 @@ int main(int argc, char * argv[])
   rclcpp::init(argc, argv);
   auto node = std::make_shared<ImageViewerSubscriber>();
   rclcpp::spin(node);
+  
+  // 【核心修正】节点退出时，强制销毁窗口
+  cv::destroyAllWindows();
+  
   rclcpp::shutdown();
   return 0;
 }

@@ -16,9 +16,11 @@
 #include <QStatusBar>
 #include <QMessageBox>
 #include <QCloseEvent>
+#include <QApplication> // 用于 qApp->processEvents()
 
-// 包含 worker 头文件
-#include "control_panel/rosworker.h"
+// ROS 相关
+#include <rclcpp/rclcpp.hpp>
+#include "control_panel/rosworker.h" // 确保路径正确
 
 class MainWindow : public QMainWindow
 {
@@ -28,29 +30,34 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+protected:
+    void closeEvent(QCloseEvent *event) override;
+
 private slots:
     void onStartClicked();
     void onStopClicked();
-    void onParamChanged(const QString &name, double value);    // 统一处理参数变化的槽
+    void onParamChanged(const QString &name, double value);
 
 private:
-    void setupUi();
+    void setupUi(); // 界面初始化函数
 
-    // 界面控件
+    // UI 指针
     QProcess *launch_process;
-    QCheckBox *chk_show_image;
-    QPushButton *btn_start;
-    QPushButton *btn_stop;
-    QDoubleSpinBox *spin_x, *spin_y, *spin_z;
-    QLineEdit *le_model_path;
-    QPushButton *btn_browse;
+    RosWorker *ros_worker;
+    
     QStatusBar *statusBar;
     QLabel *statusLabel;
     
-    RosWorker *ros_worker;    // ROS 工作线程
-
-protected:
-    void closeEvent(QCloseEvent *event) override;
+    QCheckBox *chk_show_image;
+    QPushButton *btn_start;
+    QPushButton *btn_stop;
+    
+    QDoubleSpinBox *spin_x;
+    QDoubleSpinBox *spin_y;
+    QDoubleSpinBox *spin_z;
+    
+    QLineEdit *le_model_path;
+    QPushButton *btn_browse;
 };
 
 #endif // MAINWINDOW_H

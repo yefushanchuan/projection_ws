@@ -2,74 +2,201 @@
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
+    , launch_process(nullptr) // 初始化指针，好习惯
+    , ros_worker(nullptr)
 {
-    // 1. 创建并启动 ROS 线程
-    ros_worker = new RosWorker(this);
-    ros_worker->start(); // 这行代码会让 run() 在新线程里跑起来
-
-    // 2. 初始化 Launch 进程对象
-    launch_process = new QProcess(this);
-    connect(launch_process, &QProcess::readyReadStandardOutput, [this](){
-        // 读取 Launch 输出并打印
-        QByteArray data = launch_process->readAllStandardOutput();
-        qDebug().noquote() << data; 
-    });
-
-    // 3. 构建界面
-    // QFont globalFont = this->font();
-    // globalFont.setPointSize(10);
-    // this->setFont(globalFont); 
+    // 1. 【核心】先构建界面，防止 worker 线程访问未初始化的 UI 导致崩溃
     setupUi();
 
-    // 设置一下窗口标题
-    setWindowTitle("ROS 2 Control Panel");
-    resize(300, 300);
+    // 2. 初始化状态栏
     statusBar = new QStatusBar(this);
     setStatusBar(statusBar);
     statusLabel = new QLabel("系统就绪");
     statusBar->addWidget(statusLabel);
+
+    // 3. 启动 ROS 线程
+    ros_worker = new RosWorker(this);
+    ros_worker->start(); 
+
+    // 4. 初始化进程对象并连接信号
+    launch_process = new QProcess(this);
+    
+    // 读取标准输出 (stdout)
+    connect(launch_process, &QProcess::readyReadStandardOutput, [this](){
+        QByteArray data = launch_process->readAllStandardOutput();
+        QString output = QString::fromLocal8Bit(data);
+        
+        // 简单过滤，只打印关键信息，避免刷屏
+        if(output.contains("ERROR") || output.contains("died")) {
+             qWarning().noquote() << "[Launch ERROR]" << output;
+        } else {
+             qDebug().noquote() << "[Launch]" << output; 
+        }
+    });
+
+    // 读取错误输出 (stderr)
+    connect(launch_process, &QProcess::readyReadStandardError, [this](){
+         QByteArray data = launch_process->readAllStandardError();
+         qWarning().noquote() << "[Launch STDERR]" << data;
+    });
+
+    // 处理进程启动失败的情况
+    connect(launch_process, &QProcess::errorOccurred, [this](QProcess::ProcessError error){
+        if (error == QProcess::FailedToStart) {
+            QMessageBox::critical(this, "系统错误", "无法启动 Bash 环境，请检查系统路径！");
+            statusLabel->setText("环境错误");
+        }
+    });
+
+    // 窗口基本设置
+    setWindowTitle("ROS 2 Control Panel");
+    resize(300, 300); 
 }
 
 MainWindow::~MainWindow() {
-    // A. 杀 Launch 进程
-    if(launch_process->state() == QProcess::Running) {
-        // 不要 terminate() + wait() 了，直接 kill，节约时间
+    if(launch_process && launch_process->state() == QProcess::Running) {
         launch_process->kill(); 
     }
 
-    // B. 暴力清理后台 (只保留杀进程和删文件，去掉耗时的 daemon 重启)
-    // 这些命令执行极快 (毫秒级)
-    QStringList killList = {
-        "detect_yolov5", "transform_node", "image_viewer",
-        "realsense", "component_container", "robot_state_publisher"
-    };
-    for(const QString &proc : killList) {
-        // 使用 -9 强杀，不等待
-        QProcess::execute("pkill", QStringList() << "-9" << "-f" << proc);
+    if(ros_worker) {
+        ros_worker->quit();
+        if(!ros_worker->wait(100)) ros_worker->terminate();
     }
-    
-    // 清理内存锁文件 (极快)
-    QProcess::execute("bash", QStringList() << "-c" << "rm -f /dev/shm/fastrtps_*");
-
-    // C. 停止 ROS (Worker 线程)
-    // 告诉线程退出
-    ros_worker->quit();
-    
-    // 这里的 wait 是必须的，否则容易段错误，但通常 worker 退出很快
-    // 如果实在卡，可以设置一个很短的超时，比如 100ms
-    ros_worker->wait(100); 
 
     if(rclcpp::ok()) {
         rclcpp::shutdown();
     }
+
+    // 退出时的清理命令 (不需要重启 daemon，追求速度)
+    QString cleanupCmd = 
+        "pkill -9 -f detect_yolov5; "
+        "pkill -9 -f transform_node; "
+        "pkill -9 -f image_viewer; "
+        "pkill -9 -f realsense; "
+        "pkill -9 -f component_container; "
+        "pkill -9 -f system_launch.py; "
+        "rm -f /dev/shm/fastrtps_*; "
+        "ros2 daemon stop"; 
+
+    QProcess::startDetached("bash", QStringList() << "-c" << cleanupCmd);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
-    // 隐藏窗口，给用户“立刻关闭了”的感觉
+    // 隐藏窗口给用户“立即关闭”的感觉
     this->hide();
-    
-    // 继续执行正常的关闭流程（会触发析构函数）
     event->accept();
+}
+
+void MainWindow::onStartClicked()
+{
+    // 1. 界面立即反馈
+    btn_start->setEnabled(false);
+    btn_start->setText("启动中...");
+    statusLabel->setText("正在启动 ROS 2 Launch...");
+    
+    // 【关键】强制刷新 UI，防止界面卡死
+    qApp->processEvents();
+
+    // 2. 获取参数
+    QString show_img_val = chk_show_image->isChecked() ? "true" : "false";
+    
+    // 强制保留两位小数，防止格式错误
+    QString x_val = QString::number(spin_x->value(), 'f', 2);
+    QString y_val = QString::number(spin_y->value(), 'f', 2);
+    // 【已修复】这里原先是 spin_y，现已修正为 spin_z
+    QString z_val = QString::number(spin_z->value(), 'f', 2); 
+
+    QString model_str = le_model_path->text().trimmed();
+
+    // 3. 构造启动脚本
+    QString script = QString("source /opt/ros/humble/setup.bash && "
+                             "ros2 launch cpp_launch system_launch.py " 
+                             "show_image:=%1 "
+                             "x_offset:=%2 "
+                             "y_offset:=%3 "
+                             "z_offset:=%4 ")
+                             .arg(show_img_val, x_val, y_val, z_val);
+
+    if (!model_str.isEmpty()) {
+        script += QString("model_filename:='%1'").arg(model_str);
+    }
+    
+    qDebug() << "Executing Script:" << script;
+
+    // 4. 启动进程
+    launch_process->start("bash", QStringList() << "-c" << script);
+
+    // 5. 等待启动结果 (阻塞最多 2000ms)
+    if (launch_process->waitForStarted(2000)) {
+        // --- 成功 ---
+        btn_start->setText("系统运行中");
+        
+        btn_stop->setEnabled(true);
+        chk_show_image->setEnabled(true); 
+        
+        // 运行时锁定模型选择
+        le_model_path->setEnabled(false);
+        btn_browse->setEnabled(false);
+        
+        statusLabel->setText("系统运行正常");
+        
+    } else {
+        // --- 失败 ---
+        // 错误信息已在 errorOccurred 信号中处理，这里主要复位 UI
+        btn_start->setText("启动系统");
+        btn_start->setEnabled(true);
+        statusLabel->setText("启动失败");
+    }
+}
+
+void MainWindow::onStopClicked()
+{
+    btn_stop->setEnabled(false);
+    btn_stop->setText("停止中...");
+    statusLabel->setText("正在强制清理后台...");
+    qApp->processEvents();
+
+    // 1. 杀父进程
+    if (launch_process->state() == QProcess::Running) {
+        launch_process->kill(); 
+    }
+    
+    // 2. 精确查杀所有相关节点
+    QString cleanupCmd = 
+        // 杀掉检测节点 (Python)
+        "pkill -9 -f detect_yolov5; "
+        // 杀掉坐标转换节点 (C++)
+        "pkill -9 -f transform_node; "
+        // 杀掉图像发送节点
+        "pkill -9 -f image_viewer; "
+        // 杀掉 Realsense
+        "pkill -9 -f realsense; "
+        // 杀掉组件容器
+        "pkill -9 -f component_container; "
+        // 杀掉 Launch 脚本
+        "pkill -9 -f system_launch.py; " 
+        
+        // 清理内存
+        "rm -f /dev/shm/fastrtps_*; "
+        
+        // 重启 daemon (为了下一次启动正常)
+        "ros2 daemon stop; "
+        "ros2 daemon start"; 
+
+    QProcess::execute("bash", QStringList() << "-c" << cleanupCmd);
+    
+    btn_start->setEnabled(true);
+    btn_start->setText("启动系统");
+    btn_stop->setText("停止系统");
+    le_model_path->setEnabled(true);
+    btn_browse->setEnabled(true);
+    statusLabel->setText("系统已停止");
+}
+
+void MainWindow::onParamChanged(const QString &name, double value) {
+    if(ros_worker) {
+        ros_worker->setParam(name.toStdString(), value);
+    }
 }
 
 void MainWindow::setupUi() {
@@ -81,9 +208,7 @@ void MainWindow::setupUi() {
     QGroupBox *grpLaunch = new QGroupBox("系统设置", this);
     QVBoxLayout *layLaunch = new QVBoxLayout(grpLaunch);
 
-    // ==========================================
-    // 1. 第一排：模型选择
-    // ==========================================
+    // 1. 模型选择
     QHBoxLayout *layModel = new QHBoxLayout();
     layModel->addWidget(new QLabel("模型文件:"));
 
@@ -92,7 +217,7 @@ void MainWindow::setupUi() {
     layModel->addWidget(le_model_path);
 
     btn_browse = new QPushButton("浏览...");
-    btn_browse->setMaximumWidth(50); 
+    btn_browse->setMaximumWidth(60); 
     connect(btn_browse, &QPushButton::clicked, [this](){
         QString fileName = QFileDialog::getOpenFileName(
             this, "选择模型文件", "/home/sunrise", "Model Files (*.bin);;All Files (*)"
@@ -104,15 +229,11 @@ void MainWindow::setupUi() {
     layModel->addWidget(btn_browse);
     layLaunch->addLayout(layModel);
 
-    // ==========================================
-    // 2. 第二排：检测开关 + 启动 + 停止
-    // ==========================================
+    // 2. 启动/停止/开关
     QHBoxLayout *layActions = new QHBoxLayout();
 
-    // (A) 检测窗口开关
     chk_show_image = new QCheckBox("同时显示识别图像", this);
     chk_show_image->setChecked(true);
-    // 动态切换连接
     connect(chk_show_image, &QCheckBox::clicked, [this](bool checked){
         if(launch_process->state() == QProcess::Running && ros_worker) {
             ros_worker->setParam("show_image", checked ? 1.0 : 0.0);
@@ -122,14 +243,12 @@ void MainWindow::setupUi() {
 
     layActions->addStretch();
 
-    // (B) 启动按钮
     btn_start = new QPushButton("启 动 系 统", this);
     btn_start->setMinimumWidth(100); 
     btn_start->setStyleSheet("background-color: green; color: white; font-weight: bold;");
     connect(btn_start, &QPushButton::clicked, this, &MainWindow::onStartClicked);
     layActions->addWidget(btn_start);
 
-    // (C) 停止按钮
     btn_stop = new QPushButton("停 止 系 统", this);
     btn_stop->setMinimumWidth(100); 
     btn_stop->setStyleSheet("background-color: red; color: white; font-weight: bold;");
@@ -137,28 +256,23 @@ void MainWindow::setupUi() {
     connect(btn_stop, &QPushButton::clicked, this, &MainWindow::onStopClicked);
     layActions->addWidget(btn_stop);
 
-    // 将这一排加入到 GroupBox
     layLaunch->addLayout(layActions);
-
     mainLayout->addWidget(grpLaunch);
 
-    // ==========================================
-    // 3. 参数调节区
-    // ==========================================
+    // --- 参数调节区 ---
     QGroupBox *grpParam = new QGroupBox("坐标偏移调节", this);
     QVBoxLayout *layParam = new QVBoxLayout(grpParam);
 
     auto createRow = [&](const QString &label, const QString &paramName, double defaultVal, QDoubleSpinBox* &spinBox) {
         QHBoxLayout *row = new QHBoxLayout();
         row->addWidget(new QLabel(label));
-        
         row->addStretch(); 
 
         spinBox = new QDoubleSpinBox();
-        spinBox->setRange(-1.0, 1.0);
+        spinBox->setRange(-2.0, 2.0); // 范围稍微大一点
         spinBox->setSingleStep(0.01);
         spinBox->setValue(defaultVal);
-        spinBox->setSuffix(" 米"); 
+        spinBox->setSuffix(" m"); 
         spinBox->setFixedWidth(100); 
 
         row->addWidget(spinBox);
@@ -170,123 +284,9 @@ void MainWindow::setupUi() {
             });
     };
 
-    createRow("X Offset (正即相机相对投影向左):", "x_offset", 0.00, spin_x);
-    createRow("Y Offset (正即相机相对投影向上):", "y_offset", 0.00, spin_y);
-    createRow("Z Offset (正即相机相对投影向后):", "z_offset", 0.00, spin_z);
+    createRow("X Offset (左/右):", "x_offset", 0.00, spin_x);
+    createRow("Y Offset (上/下):", "y_offset", 0.00, spin_y);
+    createRow("Z Offset (前/后):", "z_offset", 0.00, spin_z);
 
     mainLayout->addWidget(grpParam);
-}
-
-void MainWindow::onStartClicked()
-{
-    // 1. UX优化：立即禁用按钮并更新文本，防止重复点击
-    btn_start->setEnabled(false);
-    btn_start->setText("启动中...");
-    
-    statusLabel->setText("正在启动 ROS 2 Launch...");
-    
-    // 2. 获取参数
-    QString show_img_val = chk_show_image->isChecked() ? "true" : "false";
-    
-    // 强制保留两位小数，防止 crash
-    QString x_val = QString::number(spin_x->value(), 'f', 2);
-    QString y_val = QString::number(spin_y->value(), 'f', 2);
-    QString z_val = QString::number(spin_z->value(), 'f', 2);
-
-    QString model_str = le_model_path->text().trimmed();
-
-    // 3. 构造脚本
-    // 注意：z_offset:=%4 后面留了一个空格，方便后面拼接
-    QString script = QString("source /opt/ros/humble/setup.bash && "
-                             "ros2 launch cpp_launch system_launch.py " 
-                             "show_image:=%1 "
-                             "x_offset:=%2 "
-                             "y_offset:=%3 "
-                             "z_offset:=%4 ")
-                             .arg(show_img_val, x_val, y_val, z_val);
-
-    // 只有当用户选择了模型（非空）时才追加参数
-    // 如果为空，Launch 文件会使用它自己的 default_value
-    if (!model_str.isEmpty()) {
-        script += QString("model_filename:='%1'").arg(model_str);
-    }
-    
-    qDebug() << "Executing:" << script;
-
-    // 4. 执行命令
-    launch_process->start("bash", QStringList() << "-c" << script);
-
-    // 5. 等待进程启动结果 (核心优化点)
-    // waitForStarted 会阻塞主线程最多 2000ms 等待进程创建
-    if (launch_process->waitForStarted(2000)) {
-        // --- 启动成功 ---
-        btn_start->setText("系统运行中");
-        
-        // 启用停止按钮，保持启动按钮禁用
-        btn_stop->setEnabled(true);
-        
-        // 允许运行时切换图像开关
-        chk_show_image->setEnabled(true); 
-        
-        // 锁定模型选择（运行时不建议改模型，除非你做了热加载逻辑）
-        le_model_path->setEnabled(false);
-        btn_browse->setEnabled(false);
-        
-        statusLabel->setText("系统运行正常");
-        
-    } else {
-        // --- 启动失败 ---
-        QMessageBox::critical(this, "启动失败", "无法启动 Bash 进程，请检查环境！");
-        
-        // 恢复按钮状态，允许重试
-        btn_start->setText("启动系统");
-        btn_start->setEnabled(true);
-        btn_stop->setEnabled(false);
-        
-        statusLabel->setText("启动失败");
-    }
-}
-
-void MainWindow::onStopClicked()
-{
-    statusLabel->setText("正在停止系统...");
-
-    if (launch_process->state() == QProcess::Running) {
-        launch_process->terminate();
-        launch_process->waitForFinished(500);
-    }
-    
-    // 使用列表循环清理 (代码更优雅)
-    QStringList killList = {
-        "detect_yolov5", "transform_node", "image_viewer",
-        "realsense", "component_container", "robot_state_publisher"
-    };
-    
-    for(const QString &proc : killList) {
-        QProcess::execute("pkill", QStringList() << "-9" << "-f" << proc);
-    }
-
-    // 清理共享内存
-    QProcess::execute("bash", QStringList() << "-c" << "rm -f /dev/shm/fastrtps_*");
-
-    QProcess::execute("ros2", QStringList() << "daemon" << "stop");
-    QProcess::execute("ros2", QStringList() << "daemon" << "start");
-    
-    // 恢复界面状态
-    btn_start->setEnabled(true);
-    btn_start->setText("启动系统");
-    btn_stop->setEnabled(false);
-    
-    le_model_path->setEnabled(true);
-    btn_browse->setEnabled(true);
-    
-    statusLabel->setText("系统已停止");
-    qDebug() << "System stopped.";
-}
-
-void MainWindow::onParamChanged(const QString &name, double value) {
-    if(ros_worker) {
-        // 调用 worker 线程去发送 ROS 参数请求
-        ros_worker->setParam(name.toStdString(), value);
-    }
 }
