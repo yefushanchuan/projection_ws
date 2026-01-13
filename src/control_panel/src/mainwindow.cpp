@@ -5,28 +5,29 @@ MainWindow::MainWindow(QWidget *parent)
     , launch_process(nullptr)
     , ros_worker(nullptr)
 {
-    // 1. 初始化 Worker
-    ros_worker = new RosWorker(this);
-    ros_worker->start();
-
-    // 2. 初始化 Process
-    launch_process = new QProcess(this);
-    connect(launch_process, &QProcess::readyReadStandardOutput, [this](){
-        QByteArray data = launch_process->readAllStandardOutput();
-        // 简单打印，保持原逻辑
-        qDebug().noquote() << data; 
-    });
-
-    // 3. 构建界面 (保持原汁原味)
+    // 1. 【修改】先构建界面！
+    // 必须放在 Worker 启动之前，防止 Worker 访问未初始化的 UI 导致崩溃
     setupUi();
 
-    setWindowTitle("ROS 2 Control Panel");
-    resize(300, 300); // 保持原来的尺寸
-    
+    // 2. 初始化状态栏
     statusBar = new QStatusBar(this);
     setStatusBar(statusBar);
     statusLabel = new QLabel("系统就绪");
     statusBar->addWidget(statusLabel);
+
+    // 3. 初始化 Worker (现在安全了)
+    ros_worker = new RosWorker(this);
+    ros_worker->start();
+
+    // 4. 初始化 Process
+    launch_process = new QProcess(this);
+    connect(launch_process, &QProcess::readyReadStandardOutput, [this](){
+        QByteArray data = launch_process->readAllStandardOutput();
+        qDebug().noquote() << "[LAUNCH]" << data; 
+    });
+
+    setWindowTitle("ROS 2 Control Panel");
+    resize(300, 300); // 保持原来的尺寸
 }
 
 MainWindow::~MainWindow() {
@@ -38,27 +39,64 @@ MainWindow::~MainWindow() {
     // 2. 停 Worker
     if(ros_worker) {
         ros_worker->quit();
-        ros_worker->wait(50); // 稍微等一下即可
+        // 最多等 100ms，超时强杀，防止关窗口卡顿
+        if(!ros_worker->wait(100)) ros_worker->terminate();
     }
 
     if(rclcpp::ok()) {
         rclcpp::shutdown();
     }
 
-    // 3. 【核心优化】分离式后台清理
-    // 这里的命令和 onStopClicked 基本一致，但去掉了 daemon start (退出程序了没必要启动它)
+    // 3. 【核心优化】退出时的清理
+    // 包含了 sem.fastrtps_* 的清理，解决 Realsense 锁死问题
     QString cleanupCmd = 
         "pkill -9 -f detect_yolov5; "
         "pkill -9 -f transform_node; "
         "pkill -9 -f image_viewer; "
         "pkill -9 -f realsense; "
         "pkill -9 -f component_container; "
+        "pkill -9 -f system_launch.py; "
+        "pkill -9 -f cpp_launch; "
         "pkill -9 -f robot_state_publisher; "
-        "rm -f /dev/shm/fastrtps_*; "
-        "ros2 daemon stop";           // 退出时只需停止守护进程
+        "rm -f /dev/shm/fastrtps_*; "      // 清理数据段
+        "rm -f /dev/shm/sem.fastrtps_*; "  // 【关键】清理信号量锁
+        "ros2 daemon stop";                // 退出时停止 daemon
 
-    // 关键：startDetached 不会阻塞当前析构函数，窗口瞬间消失
     QProcess::startDetached("bash", QStringList() << "-c" << cleanupCmd);
+}
+
+void MainWindow::forceCleanUp() {
+    // 基于你提供的 ps -ef 日志，这是最精准的“点名查杀”
+    QString cleanupCmd = 
+        // 1. 【必须死】这是那个关不掉的窗口进程 (来自你的日志)
+        "killall -9 image_viewer_listener; "
+        
+        // 2. 【必须死】这是相机的驱动进程 (来自你的日志)
+        "killall -9 realsense2_camera_node; "
+        
+        // 3. 其他 C++ 节点 (来自你的日志)
+        "killall -9 image_viewer_talker; "
+        "killall -9 transform_node; "
+
+        // 4. Python 节点 (YOLO通常是Python脚本，killall可能抓不到，用 pkill -f 补刀)
+        "pkill -9 -f detect_yolov5; " 
+
+        // 5. 杀掉 Launch 父脚本
+        "pkill -9 -f system_launch.py; "
+
+        // 6. 杀掉组件容器 (防止有节点跑在容器里)
+        "pkill -9 -f component_container; "
+
+        // 7. 清理 ROS 2 通信残留 (解决报错)
+        "rm -f /dev/shm/fastrtps_*; "
+        "rm -f /dev/shm/sem.fastrtps_*; "
+        
+        // 8. 停止守护进程
+        "ros2 daemon stop"; 
+
+    // 执行命令
+    // 这里会忽略 "no process found" 的错误提示，只管杀
+    QProcess::execute("bash", QStringList() << "-c" << cleanupCmd);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
@@ -73,9 +111,9 @@ void MainWindow::onStartClicked()
     btn_start->setText("启动中...");
     statusLabel->setText("正在启动 ROS 2 Launch...");
     
-    // 【关键】刷新 UI，防止卡死
+    // 强制刷新 UI
     qApp->processEvents();
-    
+
     // 2. 获取参数
     QString show_img_val = chk_show_image->isChecked() ? "true" : "false";
     QString x_val = QString::number(spin_x->value(), 'f', 2);
@@ -125,41 +163,18 @@ void MainWindow::onStopClicked()
     btn_stop->setEnabled(false);
     btn_stop->setText("停止中...");
     statusLabel->setText("正在清理系统资源...");
-    
-    // 强制刷新 UI，让按钮变灰，防止用户以为卡死
     qApp->processEvents();
 
     // 2. 终止 Launch 主进程
     if (launch_process->state() == QProcess::Running) {
-        launch_process->terminate();
-        // 这里不需要等太久，因为后面有强杀兜底
-        launch_process->waitForFinished(100); 
+        launch_process->kill(); 
     }
     
-    // 3. 【核心优化】构建单条批处理指令
-    // 逻辑：
-    // (1) 先给 image_viewer 发 SIGINT (-2)，试图优雅关闭窗口
-    // (2) Bash 内部睡眠 0.1 秒 (sleep 0.3)，给它时间析构
-    // (3) 之后一并强杀所有相关节点 (-9)
-    // (4) 清理共享内存 & 重启 Daemon
-    
-    QString cleanupCmd = 
-        "pkill -2 -f image_viewer; "       // 1. 尝试优雅关闭
-        "sleep 0.1; "                      // 2. 等待 300ms
-        "pkill -9 -f detect_yolov5; "      // 3. 批量强杀其他
-        "pkill -9 -f transform_node; "
-        "pkill -9 -f realsense; "
-        "pkill -9 -f component_container; "
-        "pkill -9 -f robot_state_publisher; "
-        "rm -f /dev/shm/fastrtps_*; "      // 4. 清理内存
-        "ros2 daemon stop; "               // 5. 重置环境
-        "ros2 daemon start";
+    // 3. 调用封装好的清理函数
+    // 包含了对所有节点的强杀和内存清理
+    forceCleanUp();
 
-    // 4. 执行命令 (阻塞式，但因为是一次性执行，效率很高)
-    // 注意：主线程会卡这 0.3秒 + 执行时间，但因为前面 processEvents 了，用户无感
-    QProcess::execute("bash", QStringList() << "-c" << cleanupCmd);
-
-    // 5. 恢复界面状态
+    // 4. 恢复界面状态
     btn_start->setEnabled(true);
     btn_start->setText("启动系统");
     
@@ -170,7 +185,6 @@ void MainWindow::onStopClicked()
     btn_browse->setEnabled(true);
     
     statusLabel->setText("系统已停止");
-    qDebug() << "System stopped (Batch mode).";
 }
 
 void MainWindow::onParamChanged(const QString &name, double value) {
@@ -179,7 +193,7 @@ void MainWindow::onParamChanged(const QString &name, double value) {
     }
 }
 
-// 保持你原来的 SetupUI 完全不变
+// 保持 SetupUI 完全不变
 void MainWindow::setupUi() {
     QWidget *centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
@@ -224,14 +238,14 @@ void MainWindow::setupUi() {
 
     layActions->addStretch();
 
-    // 启动按钮 (保持原样式)
+    // 启动按钮
     btn_start = new QPushButton("启 动 系 统", this);
     btn_start->setMinimumWidth(100); 
     btn_start->setStyleSheet("background-color: green; color: white; font-weight: bold;");
     connect(btn_start, &QPushButton::clicked, this, &MainWindow::onStartClicked);
     layActions->addWidget(btn_start);
 
-    // 停止按钮 (保持原样式)
+    // 停止按钮
     btn_stop = new QPushButton("停 止 系 统", this);
     btn_stop->setMinimumWidth(100); 
     btn_stop->setStyleSheet("background-color: red; color: white; font-weight: bold;");
@@ -252,7 +266,7 @@ void MainWindow::setupUi() {
         row->addStretch(); 
 
         spinBox = new QDoubleSpinBox();
-        spinBox->setRange(-1.0, 1.0); // 保持你原来的范围
+        spinBox->setRange(-1.0, 1.0); 
         spinBox->setSingleStep(0.01);
         spinBox->setValue(defaultVal);
         spinBox->setSuffix(" 米"); 

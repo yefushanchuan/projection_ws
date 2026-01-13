@@ -3,30 +3,30 @@
 
 #include <QMainWindow>
 #include <QProcess>
+#include <QCheckBox>
+#include <QPushButton>
+#include <QDoubleSpinBox>
+#include <QLabel>
 #include <QGroupBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QPushButton>
-#include <QLabel>
+#include <QDebug>
 #include <QLineEdit>
-#include <QCheckBox>
-#include <QDoubleSpinBox>
+#include <QFileDialog> 
 #include <QStatusBar>
-#include <QFileDialog>
 #include <QMessageBox>
 #include <QCloseEvent>
 #include <QApplication>
-#include <QThread>
-#include <QDebug>
 
-#include "control_panel/rosworker.h" 
+#include <rclcpp/rclcpp.hpp>
+#include "control_panel/rosworker.h"
 
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    MainWindow(QWidget *parent = nullptr);
+    explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
 protected:
@@ -39,24 +39,25 @@ private slots:
 
 private:
     void setupUi();
+    
+    void forceCleanUp(); 
 
-    // UI 指针
-    QLineEdit *le_model_path;
-    QPushButton *btn_browse;
+    QProcess *launch_process;
+    RosWorker *ros_worker;
+    
+    QStatusBar *statusBar;
+    QLabel *statusLabel;
+    
+    QCheckBox *chk_show_image;
     QPushButton *btn_start;
     QPushButton *btn_stop;
-    QCheckBox *chk_show_image;
     
     QDoubleSpinBox *spin_x;
     QDoubleSpinBox *spin_y;
     QDoubleSpinBox *spin_z;
-
-    QStatusBar *statusBar;
-    QLabel *statusLabel;
-
-    // 后台逻辑指针
-    QProcess *launch_process;
-    RosWorker *ros_worker;
+    
+    QLineEdit *le_model_path;
+    QPushButton *btn_browse;
 };
 
 #endif // MAINWINDOW_H
