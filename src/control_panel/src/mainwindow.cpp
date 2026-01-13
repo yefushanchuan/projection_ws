@@ -39,23 +39,34 @@ MainWindow::MainWindow(QWidget *parent)
 }
 
 MainWindow::~MainWindow() {
-    // --- 退出时的清理顺序很重要 ---
-
-    // 1. 先杀掉 Launch 进程
-    if(launch_process->state() == QProcess::Running) {
-        launch_process->terminate();
-        launch_process->waitForFinished(1000); // 等待最多1秒
+    // 1. 先停止 Launch 进程
+    if (launch_process && launch_process->state() == QProcess::Running) {
+        launch_process->kill();  // 使用 kill 而不是 terminate，确保进程被终止
+        launch_process->waitForFinished(1000);
     }
-
+    delete launch_process;
+    
     // 2. 关闭 ROS
-    // rclcpp::shutdown 会让 worker 里的 spin() 退出循环
-    if(rclcpp::ok()) {
+    if (rclcpp::ok()) {
         rclcpp::shutdown();
     }
-
+    
     // 3. 等待线程结束
-    ros_worker->quit();
-    ros_worker->wait();
+    if (ros_worker) {
+        if (ros_worker->isRunning()) {
+            ros_worker->quit();
+            ros_worker->wait(2000);  // 最多等待2秒
+            
+            // 如果线程还没结束，强制终止
+            if (ros_worker->isRunning()) {
+                ros_worker->terminate();
+                ros_worker->wait();
+            }
+        }
+        delete ros_worker;
+    }
+    
+    qDebug() << "MainWindow destroyed";
 }
 
 void MainWindow::setupUi() {
