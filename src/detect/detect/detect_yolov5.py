@@ -94,13 +94,19 @@ class YoloDetectNode(Node):
 #            mode = True,
             is_save = False
             )
+        
+        self.add_on_set_parameters_callback(self.parameter_callback)
 
     def parameter_callback(self, params):
         for param in params:
             if param.name == 'show_image':
                 if param.type_ == param.Type.BOOL:
+                    # 更新类成员变量
                     self.show_image_flag = param.value
-                    # self.get_logger().info(f"Updated show_image to: {self.show_image_flag}")
+                    
+                    # 打印日志，证明收到信号了
+                    self.get_logger().info(f"Qt Signal Received: show_image -> {self.show_image_flag}")
+                    
         return SetParametersResult(successful=True)
 
     def listener_callback(self, msg):
