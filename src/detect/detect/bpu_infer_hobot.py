@@ -233,9 +233,16 @@ class BPU_Detect:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
     def detect_result(self, img, show_img):
+        # 1. 如果既不保存也不显示，且窗口已创建，则销毁窗口
         if not self.is_save and not show_img:
+            if self.window_created:
+                cv2.destroyWindow("Detection Result")
+                self.window_created = False
+                # 这里必须加 waitKey(1) 让 OpenCV 处理销毁事件
+                cv2.waitKey(1)
             return
 
+        # 2. 准备绘图数据
         if isinstance(img, str):
             draw_img = cv2.imread(img)
         elif isinstance(img, np.ndarray):
@@ -243,13 +250,16 @@ class BPU_Detect:
         else:
             return
         
+        # 3. 绘制框
         for class_id, score, bbox in zip(self.ids, self.scores, self.bboxes):
             x1, y1, x2, y2 = bbox
             self.draw_detection(draw_img, (x1, y1, x2, y2), score, class_id, self.labelname)
 
+        # 4. 保存
         if self.is_save:
             cv2.imwrite("result.jpg", draw_img)
         
+        # 5. 显示逻辑 (修复版)
         if show_img:
             if not self.window_created:
                 cv2.namedWindow("Detection Result", cv2.WINDOW_NORMAL)
@@ -258,6 +268,13 @@ class BPU_Detect:
             
             cv2.imshow("Detection Result", draw_img)
             cv2.waitKey(1)
+        else:
+            # 如果 show_img 突然变为 False (例如用户在 Qt 取消勾选)
+            # 我们需要立即关闭窗口，而不是让它卡住
+            if self.window_created:
+                cv2.destroyWindow("Detection Result")
+                self.window_created = False
+                cv2.waitKey(1)
   
     def detect(self, img, show_img=True):
         """
