@@ -4,20 +4,18 @@
 
 int main(int argc, char *argv[])
 {
-    // 1. 全局初始化 ROS
+    // 1. 全局初始化 ROS / 初始化 Qt 应用
     rclcpp::init(argc, argv);
-
-    // 2. 初始化 Qt 应用
     QApplication a(argc, argv);
 
-    // 3. 创建主窗口
+    // 2. 创建主窗口
     MainWindow w;
     w.show();
 
-    // 4. 进入 Qt 事件循环
+    // 3. 进入 Qt 事件循环
     int ret = a.exec();
 
-    // 5. 确保退出时 ROS 已关闭 (双重保险)
+    // 4. 确保退出时 ROS 已关闭 (双重保险)
     if (rclcpp::ok()) {
         rclcpp::shutdown();
     }

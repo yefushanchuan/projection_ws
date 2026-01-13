@@ -12,11 +12,9 @@ public:
     explicit RosWorker(QObject *parent = nullptr);
     ~RosWorker() override;
 
-    // 线程入口，start() 后会自动调用
-    void run() override;
+    void run() override;    // 线程入口，start() 后会自动调用
 
-    // 设置参数的接口
-    void setParam(const std::string &name, double value);
+    void setParam(const std::string &name, double value);    // 设置参数的接口
 
 private:
     rclcpp::Node::SharedPtr node_;

@@ -28,8 +28,7 @@ public:
 private slots:
     void onStartClicked();
     void onStopClicked();
-    // 统一处理参数变化的槽
-    void onParamChanged(const QString &name, double value);
+    void onParamChanged(const QString &name, double value);    // 统一处理参数变化的槽
 
 private:
     void setupUi();
@@ -42,9 +41,8 @@ private:
     QDoubleSpinBox *spin_x, *spin_y, *spin_z;
     QLineEdit *le_model_path;
     QPushButton *btn_browse;
-    
-    // ROS 工作线程
-    RosWorker *ros_worker;
+
+    RosWorker *ros_worker;    // ROS 工作线程
 };
 
 #endif // MAINWINDOW_H
