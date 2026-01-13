@@ -15,6 +15,7 @@
 #include <QFileDialog> 
 #include <QStatusBar>
 #include <QMessageBox>
+#include <QCloseEvent>
 
 // 包含 worker 头文件
 #include "control_panel/rosworker.h"
@@ -47,6 +48,9 @@ private:
     QLabel *statusLabel;
     
     RosWorker *ros_worker;    // ROS 工作线程
+
+protected:
+    void closeEvent(QCloseEvent *event) override;
 };
 
 #endif // MAINWINDOW_H

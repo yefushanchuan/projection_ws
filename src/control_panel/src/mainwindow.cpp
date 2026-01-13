@@ -1,5 +1,4 @@
 #include "control_panel/mainwindow.h"
-#include <QFileDialog> 
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -32,28 +31,45 @@ MainWindow::MainWindow(QWidget *parent)
 }
 
 MainWindow::~MainWindow() {
-    // 1. 杀掉 Launch 进程
-    if(launch_process && launch_process->state() == QProcess::Running) {
-        launch_process->kill(); // 强制杀死
-        launch_process->waitForFinished(1000);
+    // A. 杀 Launch 进程
+    if(launch_process->state() == QProcess::Running) {
+        // 不要 terminate() + wait() 了，直接 kill，节约时间
+        launch_process->kill(); 
+    }
+
+    // B. 暴力清理后台 (只保留杀进程和删文件，去掉耗时的 daemon 重启)
+    // 这些命令执行极快 (毫秒级)
+    QStringList killList = {
+        "detect_yolov5", "transform_node", "image_viewer",
+        "realsense", "component_container", "robot_state_publisher"
+    };
+    for(const QString &proc : killList) {
+        // 使用 -9 强杀，不等待
+        QProcess::execute("pkill", QStringList() << "-9" << "-f" << proc);
     }
     
-    // 2. 清理后台残留 (调用 Stop 逻辑)
-    onStopClicked(); 
+    // 清理内存锁文件 (极快)
+    QProcess::execute("bash", QStringList() << "-c" << "rm -f /dev/shm/fastrtps_*");
 
-    // 3. 关闭 ROS
+    // C. 停止 ROS (Worker 线程)
+    // 告诉线程退出
+    ros_worker->quit();
+    
+    // 这里的 wait 是必须的，否则容易段错误，但通常 worker 退出很快
+    // 如果实在卡，可以设置一个很短的超时，比如 100ms
+    ros_worker->wait(100); 
+
     if(rclcpp::ok()) {
         rclcpp::shutdown();
     }
+}
 
-    // 4. 等待 Worker 线程结束
-    if (ros_worker) {
-        ros_worker->quit();
-        ros_worker->wait(2000); // 最多等2秒
-        if (ros_worker->isRunning()) {
-            ros_worker->terminate(); // 超时强制结束
-        }
-    }
+void MainWindow::closeEvent(QCloseEvent *event) {
+    // 隐藏窗口，给用户“立刻关闭了”的感觉
+    this->hide();
+    
+    // 继续执行正常的关闭流程（会触发析构函数）
+    event->accept();
 }
 
 void MainWindow::setupUi() {
