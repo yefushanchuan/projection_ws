@@ -29,13 +29,11 @@ def generate_launch_description():
         launch_arguments={
             'name': 'camera',
             'namespace': 'camera',
-            # 建议设为 false 以加快启动，除非硬件经常卡死需要重置
             'initial_reset': 'false', 
-            'enable_rgbd': 'true',
-            'enable_sync': 'true',
-            'align_depth.enable': 'true',
-            'enable_color': 'true',
-            'enable_depth': 'true',
+            'align_depth.enable': 'true',  # 必须：对齐深度
+            'enable_sync': 'true',         # 必须：时间同步
+            'rgb_camera.profile': '1280x720x30', 
+            'depth_module.profile': '1280x720x30',
             'log_level': 'warn' 
         }.items()
     )

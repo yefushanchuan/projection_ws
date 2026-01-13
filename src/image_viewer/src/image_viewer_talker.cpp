@@ -16,9 +16,8 @@ public:
   ImageViewerTalker()
   : Node("image_viewer_talker")
   {
-    // 参数声明 (默认值根据你的 Realsense 参数或者投影仪参数设定)
-    this->declare_parameter<double>("fx", 905.5); // 注意：这里通常需要根据投影仪标定，或者假设和相机一致
-    this->declare_parameter<double>("fy", 905.5);
+    this->declare_parameter<double>("fx", 1612.8); // 注意：这里通常需要根据投影仪标定
+    this->declare_parameter<double>("fy", 1612.8);
     this->declare_parameter<double>("cx", 640.0); 
     this->declare_parameter<double>("cy", 360.0);
     this->declare_parameter<int>("point_radius", 15);
@@ -35,8 +34,8 @@ public:
     image_width_ = this->get_parameter("image_width").as_int();
     image_height_ = this->get_parameter("image_height").as_int();
 
-    // 发布生成的黑底白点图
-    image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("image_topic", 10);
+    // 发布生成的黑底打点图
+    image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("projection_image_topic", 10);
 
     // 订阅经过坐标转换后的 3D 点
     points_sub_  = this->create_subscription<object3d_msgs::msg::Object3DArray>(
@@ -50,38 +49,43 @@ public:
 private:
   void points_callback(const object3d_msgs::msg::Object3DArray::SharedPtr msg)
   {
-    // 1. 创建黑色背景图
     cv::Mat image = cv::Mat::zeros(image_height_, image_width_, CV_8UC3);
 
-    // 2. 遍历所有检测到的物体
     for (const auto & obj : msg->objects)
     {
       double X = obj.point.x;
       double Y = obj.point.y;
       double Z = obj.point.z;
 
-      // 防止除以零或投影无效点
-      if (Z < min_z_) {
-          continue; 
-      }
+      if (Z < min_z_) continue; 
 
-      // 3. 核心投影公式 (3D 相机坐标系 -> 2D 像素坐标系)
-      // u = fx * (X/Z) + cx
-      // v = fy * (Y/Z) + cy
+      // 1. 计算投影中心坐标 (u, v)
       int u = static_cast<int>((fx_ * X / Z) + cx_); 
       int v = static_cast<int>((fy_ * Y / Z) + cy_);
       
-      // 4. 边界检查与绘制
+      // 2. === 核心修改：计算投影半径 ===
+      // 从消息里拿出物体的物理宽高
+      double obj_w = obj.width_m;
+      double obj_h = obj.height_m;
+      
+      // 逻辑：取最大内切圆 -> 直径取短边 -> 半径 = 短边 / 2
+      double physical_radius = std::min(obj_w, obj_h) / 2.0;
+      
+      // 反算：这个物理半径在投影仪画面上占多少像素？
+      // 像素半径 = (物理半径 * 投影仪焦距) / 投影距离Z
+      // 这里的 fx_ 是投影仪的 fx (1612.8)
+      int proj_radius_pixel = static_cast<int>((physical_radius * fx_) / Z);
+      
+      // 限制最小半径，防止太远看不见
+      if (proj_radius_pixel < 5) proj_radius_pixel = 5;
+      // ==============================
+
       bool is_inside = (u >= 0 && u < image_width_ && v >= 0 && v < image_height_);
 
       if (is_inside) {
-        // 绘制白色实心圆
-        cv::circle(image, cv::Point(u, v), radius_, cv::Scalar(255, 255, 255), -1);
-      } else {
-        // 越界警告 (使用 throttle 防止日志刷屏，每2秒最多打印一次)
-        RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 2000, 
-            "Point out of bounds: 3D(%.2f, %.2f, %.2f) -> 2D(%d, %d)", X, Y, Z, u, v);
-      }
+        // 使用算出来的动态半径画圆
+        cv::circle(image, cv::Point(u, v), proj_radius_pixel/2, cv::Scalar(0, 255, 0), -1);
+      } 
     }
 
     // 5. 发布图像

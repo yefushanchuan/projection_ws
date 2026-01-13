@@ -10,7 +10,7 @@ public:
   ImageViewerSubscriber() : Node("image_viewer_listener")
   {
     subscription_ = this->create_subscription<sensor_msgs::msg::Image>(
-      "image_topic", 10,
+      "projection_image_topic", 10,
       std::bind(&ImageViewerSubscriber::image_callback, this, std::placeholders::_1));
       
     // 初始化窗口
@@ -18,7 +18,16 @@ public:
     cv::namedWindow(window_name_, cv::WINDOW_NORMAL);
     cv::setWindowProperty(window_name_, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
     
-    RCLCPP_INFO(this->get_logger(), "ImageViewer Listener started (Fullscreen Mode).");
+    RCLCPP_INFO(this->get_logger(), "ImageViewer Listener started.");
+  }
+
+  // 【核心修改】添加析构函数
+  // 当节点销毁时，确保窗口被关闭
+  ~ImageViewerSubscriber()
+  {
+    // 强制关闭所有 OpenCV 窗口
+    cv::destroyAllWindows(); 
+    RCLCPP_INFO(this->get_logger(), "ImageViewer stopped and window closed.");
   }
 
 private:
@@ -26,10 +35,8 @@ private:
   {
     try
     {
-      // 零拷贝转换 (toCvShare 更高效)
+      // 使用 toCvShare 提高性能
       cv::Mat image = cv_bridge::toCvShare(msg, "bgr8")->image;
-
-      // 只有图像非空才显示
       if (!image.empty()) {
           cv::imshow(window_name_, image);
           cv::waitKey(1); 
@@ -49,11 +56,11 @@ int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<ImageViewerSubscriber>();
+  
+  // 正常运行，等待信号
   rclcpp::spin(node);
   
-  // 【核心修正】节点退出时，强制销毁窗口
-  cv::destroyAllWindows();
-  
+  // 此时 node 超出作用域，析构函数会被调用，窗口关闭
   rclcpp::shutdown();
   return 0;
 }

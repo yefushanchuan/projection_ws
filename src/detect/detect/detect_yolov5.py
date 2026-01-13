@@ -30,7 +30,6 @@ class YoloDetectNode(Node):
         self.camera_cx = self.get_parameter('camera.cx').get_parameter_value().double_value
         self.camera_cy = self.get_parameter('camera.cy').get_parameter_value().double_value
         self.show_image_flag = self.get_parameter('show_image').get_parameter_value().bool_value
-        
         conf_val = self.get_parameter('conf_thres').get_parameter_value().double_value
         model_filename = self.get_parameter('model_filename').get_parameter_value().string_value
 
@@ -82,11 +81,11 @@ class YoloDetectNode(Node):
             conf = conf_val,
             is_save = False
         )
-        
-        # 6. 【关键】注册动态参数回调 (写在最后最安全)
-        self.add_on_set_parameters_callback(self.parameter_callback)
 
-    def parameter_callback(self, params):
+        # 6. 参数回调注册
+        self.add_on_set_parameters_callback(self.parameter_show_image_flag_callback)
+
+    def parameter_show_image_flag_callback(self, params):
         """处理来自 Qt 界面的参数修改请求"""
         for param in params:
             if param.name == 'show_image' and param.type_ == param.Type.BOOL:
@@ -152,11 +151,23 @@ class YoloDetectNode(Node):
                     X = (float(cx) - cx_) * Z / fx
                     Y = (float(cy) - cy_) * Z / fy
 
+                    # === 计算物理宽高 ===
+                    bbox = self.detector.bboxes[i] # [x1, y1, x2, y2]
+                    x1, y1, x2, y2 = bbox
+                    w_pixel = x2 - x1
+                    h_pixel = y2 - y1
+
+                    # 物理长度 = (像素长度 * 距离Z) / 焦距
+                    # 宽度对应 fx，高度对应 fy
+                    width_m = (w_pixel * Z) / self.camera_fx
+                    height_m = (h_pixel * Z) / self.camera_fy
                     # 构建消息
                     obj_msg = Object3D()
                     obj_msg.point.x = X
                     obj_msg.point.y = Y
                     obj_msg.point.z = Z
+                    obj_msg.width_m = width_m
+                    obj_msg.height_m = height_m
 
                     # 获取类别和置信度
                     try:

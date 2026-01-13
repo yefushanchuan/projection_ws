@@ -10,7 +10,7 @@ class CoordTransformNode : public rclcpp::Node
 {
 public:
     CoordTransformNode()
-    : Node("transform_node") // 注意：这里节点名最好和 Launch 文件里保持一致
+    : Node("transform_node")
     {
         // 声明参数
         this->declare_parameter<double>("x_offset", 0.0);

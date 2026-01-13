@@ -3,31 +3,30 @@
 
 #include <QMainWindow>
 #include <QProcess>
-#include <QCheckBox>
-#include <QPushButton>
-#include <QDoubleSpinBox>
-#include <QLabel>
 #include <QGroupBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QDebug>
+#include <QPushButton>
+#include <QLabel>
 #include <QLineEdit>
-#include <QFileDialog> 
+#include <QCheckBox>
+#include <QDoubleSpinBox>
 #include <QStatusBar>
+#include <QFileDialog>
 #include <QMessageBox>
 #include <QCloseEvent>
-#include <QApplication> // 用于 qApp->processEvents()
+#include <QApplication>
+#include <QThread>
+#include <QDebug>
 
-// ROS 相关
-#include <rclcpp/rclcpp.hpp>
-#include "control_panel/rosworker.h" // 确保路径正确
+#include "control_panel/rosworker.h" 
 
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget *parent = nullptr);
+    MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
 protected:
@@ -39,25 +38,25 @@ private slots:
     void onParamChanged(const QString &name, double value);
 
 private:
-    void setupUi(); // 界面初始化函数
+    void setupUi();
 
     // UI 指针
-    QProcess *launch_process;
-    RosWorker *ros_worker;
-    
-    QStatusBar *statusBar;
-    QLabel *statusLabel;
-    
-    QCheckBox *chk_show_image;
+    QLineEdit *le_model_path;
+    QPushButton *btn_browse;
     QPushButton *btn_start;
     QPushButton *btn_stop;
+    QCheckBox *chk_show_image;
     
     QDoubleSpinBox *spin_x;
     QDoubleSpinBox *spin_y;
     QDoubleSpinBox *spin_z;
-    
-    QLineEdit *le_model_path;
-    QPushButton *btn_browse;
+
+    QStatusBar *statusBar;
+    QLabel *statusLabel;
+
+    // 后台逻辑指针
+    QProcess *launch_process;
+    RosWorker *ros_worker;
 };
 
 #endif // MAINWINDOW_H
