@@ -253,10 +253,6 @@ void MainWindow::onStopClicked()
     // 清理共享内存
     QProcess::execute("bash", QStringList() << "-c" << "rm -f /dev/shm/fastrtps_*");
 
-    // 重置 Daemon
-    QProcess::execute("ros2", QStringList() << "daemon" << "stop");
-    QProcess::execute("ros2", QStringList() << "daemon" << "start");
-
     // 恢复界面状态
     btn_start->setEnabled(true);
     btn_start->setText("启动系统");
