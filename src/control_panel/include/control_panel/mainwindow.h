@@ -41,7 +41,9 @@ private:
     QDoubleSpinBox *spin_x, *spin_y, *spin_z;
     QLineEdit *le_model_path;
     QPushButton *btn_browse;
-
+    QStatusBar *statusBar;
+    QLabel *statusLabel;
+    
     RosWorker *ros_worker;    // ROS 工作线程
 };
 

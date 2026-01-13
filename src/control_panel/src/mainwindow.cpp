@@ -22,6 +22,17 @@ MainWindow::MainWindow(QWidget *parent)
     // this->setFont(globalFont); 
     setupUi();
     
+    statusBar = new QStatusBar(this);
+    setStatusBar(statusBar);
+    statusLabel = new QLabel("就绪");
+    statusBar->addWidget(statusLabel);
+
+    // 在 onStartClicked 中添加状态更新
+    statusLabel->setText("系统启动中...");
+
+    // 在 onStopClicked 中添加状态更新
+    statusLabel->setText("系统已停止"); 
+
     // 设置一下窗口标题
     setWindowTitle("ROS 2 Control Panel");
     resize(300, 300);
@@ -154,16 +165,16 @@ void MainWindow::setupUi() {
 
 void MainWindow::onStartClicked()
 {
-    QString show_img_val = chk_show_image->isChecked() ? "true" : "false";
+    // 禁用按钮，显示进度
+    btn_start->setEnabled(false);
+    btn_start->setText("启动中...");
     
-    // !!! 核心修改：加 'f', 2 !!!
-    // 强制把 0 转成 "0.00"，让 ROS 识别为 double 类型，防止 crash
+    QString show_img_val = chk_show_image->isChecked() ? "true" : "false";
     QString x_val = QString::number(spin_x->value(), 'f', 2);
     QString y_val = QString::number(spin_y->value(), 'f', 2);
     QString z_val = QString::number(spin_z->value(), 'f', 2);
-
     QString model_str = le_model_path->text().trimmed();
-
+    
     QString script = QString("source /opt/ros/humble/setup.bash && "
                              "ros2 launch cpp_launch system_launch.py " 
                              "show_image:=%1 "
@@ -171,61 +182,83 @@ void MainWindow::onStartClicked()
                              "y_offset:=%3 "
                              "z_offset:=%4 ")
                              .arg(show_img_val, x_val, y_val, z_val);
-
+    
     if (!model_str.isEmpty()) {
         script += QString("model_filename:='%1'").arg(model_str);
     }
     
     qDebug() << "Executing:" << script;
-
+    
+    // 连接进程完成信号
+    connect(launch_process, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status){
+        qDebug() << "Launch process finished with exit code:" << exitCode;
+        if (exitCode != 0) {
+            QMessageBox::warning(this, "警告", "启动失败，请检查系统状态！");
+            // 恢复按钮状态
+            btn_start->setEnabled(true);
+            btn_start->setText("启 动 系 统");
+            btn_stop->setEnabled(false);
+        }
+    });
+    
     launch_process->start("bash", QStringList() << "-c" << script);
-
-    btn_start->setEnabled(false);
-    btn_stop->setEnabled(true);
     
-    chk_show_image->setEnabled(true); 
-    
-    // 建议启动后锁定模型选择，防止误触
-    le_model_path->setEnabled(false);
-    btn_browse->setEnabled(false);
+    // 等待进程启动
+    if (launch_process->waitForStarted(3000)) {
+        btn_start->setText("运行中");
+        btn_stop->setEnabled(true);
+        chk_show_image->setEnabled(true);
+        le_model_path->setEnabled(false);
+        btn_browse->setEnabled(false);
+    } else {
+        QMessageBox::warning(this, "错误", "无法启动系统进程！");
+        btn_start->setEnabled(true);
+        btn_start->setText("启 动 系 统");
+    }
 }
 
 void MainWindow::onStopClicked()
 {
+    // 更新状态
+    statusLabel->setText("正在停止系统...");
+    
     // 1. 停止 Launch 进程
-    if (launch_process->state() == QProcess::Running) {
+    if (launch_process && launch_process->state() == QProcess::Running) {
         launch_process->terminate();
-        launch_process->waitForFinished(500); // 稍微等一下
+        if (!launch_process->waitForFinished(1000)) {
+            launch_process->kill();
+            launch_process->waitForFinished(500);
+        }
     }
     
-    // 2. 暴力清理所有相关后台进程 (建议加上 -9 强制杀死，防止进程卡在后台)
-    // pkill -9 表示 SIGKILL，立即处决，不给进程犹豫的机会
-    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "detect_yolov5");
-    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "transform_node");
-    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "image_viewer");
-    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "realsense2_camera_node");
-    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "component_container");
-    QProcess::execute("pkill", QStringList() << "-9" << "-f" << "robot_state_publisher");
-
-    // ============================================================
-    // !!! 核心修复点：清理共享内存 (Shared Memory) !!!
-    // ============================================================
-    // 这一步专门解决 [RTPS_TRANSPORT_SHM Error]
-    // 因为 rm 支持通配符(*)，必须通过 bash -c 来执行
-    QProcess::execute("bash", QStringList() << "-c" << "rm -f /dev/shm/fastrtps_*");
-
-    // 3. 重置 ROS 2 守护进程 (清除节点重名缓存)
-    QProcess::execute("ros2", QStringList() << "daemon" << "stop");
-    QProcess::execute("ros2", QStringList() << "daemon" << "start"); // 顺手重启一下更好
-
-    // 4. 恢复按钮状态
-    btn_start->setEnabled(true);
-    btn_stop->setEnabled(false);
+    // 2. 清理后台进程
+    QStringList processes = {
+        "detect_yolov5", "transform_node", "image_viewer",
+        "realsense2_camera_node", "component_container", "robot_state_publisher"
+    };
     
-    // 解锁模型选择
+    foreach (const QString &proc, processes) {
+        QProcess killProcess;
+        killProcess.start("pkill", QStringList() << "-9" << "-f" << proc);
+        killProcess.waitForFinished(100);
+    }
+    
+    // 3. 清理共享内存
+    QProcess::execute("bash", QStringList() << "-c" << "rm -f /dev/shm/fastrtps_*");
+    
+    // 4. 重置 ROS 2 守护进程
+    QProcess daemonStop;
+    daemonStop.start("ros2", QStringList() << "daemon" << "stop");
+    daemonStop.waitForFinished(500);
+    
+    // 5. 恢复界面状态
+    btn_start->setEnabled(true);
+    btn_start->setText("启 动 系 统");
+    btn_stop->setEnabled(false);
     le_model_path->setEnabled(true);
     btn_browse->setEnabled(true);
     
+    statusLabel->setText("系统已停止");
     qDebug() << "System stopped.";
 }
 
