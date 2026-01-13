@@ -12,7 +12,6 @@ find_package(object3d_msgs REQUIRED)
 
 add_executable(transform_node src/transform_node.cpp)
 
-ament_target_dependencies(transform_node rclcpp object3d_msgs)
 ament_target_dependencies(
   transform_node
   "rclcpp"

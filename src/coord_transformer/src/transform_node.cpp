@@ -8,7 +8,7 @@ class CoordTransformNode : public rclcpp::Node
 {
 public:
     CoordTransformNode()
-    : Node("coord_transformer_node")
+    : Node("transformer_node")
     {
         this->declare_parameter<double>("x_offset", 0.0);
         this->declare_parameter<double>("y_offset", 0.0);
