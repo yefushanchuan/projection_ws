@@ -27,27 +27,33 @@ def generate_launch_description():
                           "launch", 
                           "rs_launch.py")),
         launch_arguments={
-            # 1. 节点名称和命名空间
-            'camera_name': 'realsense_d435i',          
-            'camera_namespace': 'camera',     
-            
-            # 2. 复位设置
+            # === 1. 基础配置 ===
+            'camera_name': 'realsense_d435i',
+            'camera_namespace': 'camera',
             'initial_reset': 'false',
             
-            # 3. 对齐和同步 (正确)
-            'align_depth.enable': 'true',     
-            'enable_sync': 'true',            
+            # === 2. 核心功能 ===
+            'align_depth.enable': 'true',     # 必须：深度对齐
+            'enable_sync': 'true',            # 必须：时间同步
+            'rgb_camera.color_profile': '1280,720,6', 
+            'depth_module.depth_profile': '1280,720,6',
             
-            # 4. 分辨率配置 (修正参数名，注意使用逗号分隔)
-            'rgb_camera.color_profile': '1280,720,30',   
-            'depth_module.depth_profile': '1280,720,30', 
+            # === 3. 滤镜配置 (解决深度图有黑洞/无效点的问题) ===
+            # 【关键】填孔滤镜：强制用邻近像素填充无效的深度值(0)
+            'hole_filling_filter.enable': 'true',   
             
-            # 5. 关闭不需要的功能 (显式关闭以节省资源)
+            # 推荐：空间滤镜 (平滑边缘，减少噪点)
+            'spatial_filter.enable': 'true',        
+            
+            # 推荐：时间滤镜 (减少深度值随时间的抖动，让测距数值更稳)
+            'temporal_filter.enable': 'true',       
+            
+            # === 4. 关闭不需要的功能 (节省资源) ===
             'pointcloud.enable': 'false',
             'enable_gyro': 'false',
             'enable_accel': 'false',
             
-            # 6. 日志级别
+            # === 5. 日志 ===
             'log_level': 'warn'
         }.items()
     )

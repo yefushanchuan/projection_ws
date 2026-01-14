@@ -9,10 +9,17 @@ from ament_index_python.packages import get_package_share_directory
 from detect.bpu_infer_hobot import BPU_Detect
 from rcl_interfaces.msg import SetParametersResult 
 from object3d_msgs.msg import Object3D, Object3DArray
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 class YoloDetectNode(Node):
     def __init__(self):
         super().__init__('yolo_detect_node')
+
+        latest_frame_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,  # 配合你现在的 Reliable 相机
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1                                  # <--- 关键！只要最新的一张
+        )
 
         # 1. 声明参数
         self.declare_parameter('camera.fx', 905.5593)
@@ -35,8 +42,8 @@ class YoloDetectNode(Node):
 
         # 3. 初始化通信
         self.create_subscription(Image, '/camera/realsense_d435i/color/image_raw', self.listener_callback, 10)
-        self.create_subscription(Image, '/camera/realsense_d435i/aligned_depth_to_color/image_raw', self.depth_callback, 10)
-        self.publisher_ = self.create_publisher(Object3DArray, 'target_points_array', 10)
+        self.create_subscription(Image, '/camera/realsense_d435i/aligned_depth_to_color/image_raw', self.depth_callback, latest_frame_qos)
+        self.publisher_ = self.create_publisher(Object3DArray, 'target_points_array', latest_frame_qos)
         
         self.bridge = CvBridge()
         self.depth_image = None

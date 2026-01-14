@@ -20,19 +20,17 @@ public:
     this->declare_parameter<double>("fy", 1612.8);
     this->declare_parameter<double>("cx", 640.0); 
     this->declare_parameter<double>("cy", 360.0);
-    this->declare_parameter<int>("point_radius", 15);
-    this->declare_parameter<double>("min_z_threshold", 0.2); // 最小深度阈值
-    this->declare_parameter<int>("image_width", 1280);
-    this->declare_parameter<int>("image_height", 720);
+    this->declare_parameter<double>("min_z_threshold", 0.5); // 最小深度阈值
+    this->declare_parameter<int>("projection_width", 1280);
+    this->declare_parameter<int>("projection_height", 720);
 
     fx_ = this->get_parameter("fx").as_double();
     fy_ = this->get_parameter("fy").as_double();
     cx_ = this->get_parameter("cx").as_double();
     cy_ = this->get_parameter("cy").as_double();
-    radius_ = this->get_parameter("point_radius").as_int();
     min_z_ = this->get_parameter("min_z_threshold").as_double();
-    image_width_ = this->get_parameter("image_width").as_int();
-    image_height_ = this->get_parameter("image_height").as_int();
+    projection_width_ = this->get_parameter("projection_width").as_int();
+    projection_height_ = this->get_parameter("projection_height").as_int();
 
     // 发布生成的黑底打点图
     image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("projection_image_topic", 10);
@@ -43,13 +41,14 @@ public:
       std::bind(&ImageViewerTalker::points_callback, this, std::placeholders::_1)
     );
 
-    RCLCPP_INFO(this->get_logger(), "Image Viewer Talker Started. Canvas: %dx%d", image_width_, image_height_);
+    RCLCPP_INFO(this->get_logger(), "Image Viewer Talker Started. Canvas: %dx%d", projection_width_, projection_height_);
   }
 
 private:
   void points_callback(const object3d_msgs::msg::Object3DArray::SharedPtr msg)
   {
-    cv::Mat image = cv::Mat::zeros(image_height_, image_width_, CV_8UC3);
+    cv::Mat image = cv::Mat::zeros(projection_height_, projection_width_, CV_8UC3);
+    int out_of_bounds_count = 0; // 计数越界点
 
     for (const auto & obj : msg->objects)
     {
@@ -80,12 +79,24 @@ private:
       if (proj_radius_pixel < 5) proj_radius_pixel = 5;
       // ==============================
 
-      bool is_inside = (u >= 0 && u < image_width_ && v >= 0 && v < image_height_);
+      bool is_inside = (u >= 0 && u < projection_width_ && v >= 0 && v < projection_height_);
 
       if (is_inside) {
         // 使用算出来的动态半径画圆
         cv::circle(image, cv::Point(u, v), proj_radius_pixel/2, cv::Scalar(0, 255, 0), -1);
-      } 
+      }
+      else {
+        out_of_bounds_count++;
+      }
+    }
+
+    int total_points = msg->objects.size(); // 总点数
+
+    // 打印统计信息（仅当有越界点时）
+    if (out_of_bounds_count > 0) {
+        RCLCPP_WARN(this->get_logger(),
+                    "Total points: %d, projected out of bounds: %d",
+                    total_points, out_of_bounds_count);
     }
 
     // 5. 发布图像
@@ -107,7 +118,7 @@ private:
   double fx_, fy_, cx_, cy_;
   int radius_;
   double min_z_;
-  int image_width_, image_height_;
+  int projection_width_, projection_height_;
 };
 
 int main(int argc, char * argv[])
