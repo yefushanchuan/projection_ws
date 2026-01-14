@@ -14,7 +14,7 @@ public:
       std::bind(&ImageViewerSubscriber::image_callback, this, std::placeholders::_1));
       
     // 初始化窗口
-    window_name_ = "Received Image";
+    window_name_ = "projection Image";
     cv::namedWindow(window_name_, cv::WINDOW_NORMAL);
     cv::setWindowProperty(window_name_, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
     
