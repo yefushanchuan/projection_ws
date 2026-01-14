@@ -209,6 +209,8 @@ void MainWindow::setupUi() {
 
     le_model_path = new QLineEdit();
     le_model_path->setPlaceholderText("Default : yolov5x_tag_v7.0_detect_640x640_bayese_nv12.bin");
+    le_model_path->setReadOnly(true); 
+    le_model_path->setToolTip("点击“浏览”选择文件");
     layModel->addWidget(le_model_path);
 
     btn_browse = new QPushButton("浏览...");
