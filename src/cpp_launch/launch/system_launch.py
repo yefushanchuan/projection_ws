@@ -27,14 +27,28 @@ def generate_launch_description():
                           "launch", 
                           "rs_launch.py")),
         launch_arguments={
-            'name': 'camera',
-            'namespace': 'camera',
-            'initial_reset': 'false', 
-            'align_depth.enable': 'true',  # 必须：对齐深度
-            'enable_sync': 'true',         # 必须：时间同步
-            'rgb_camera.profile': '1280x720x30', 
-            'depth_module.profile': '1280x720x30',
-            'log_level': 'warn' 
+            # 1. 节点名称和命名空间
+            'camera_name': 'realsense_d435i',          
+            'camera_namespace': 'camera',     
+            
+            # 2. 复位设置
+            'initial_reset': 'false',
+            
+            # 3. 对齐和同步 (正确)
+            'align_depth.enable': 'true',     
+            'enable_sync': 'true',            
+            
+            # 4. 分辨率配置 (修正参数名，注意使用逗号分隔)
+            'rgb_camera.color_profile': '1280,720,30',   
+            'depth_module.depth_profile': '1280,720,30', 
+            
+            # 5. 关闭不需要的功能 (显式关闭以节省资源)
+            'pointcloud.enable': 'false',
+            'enable_gyro': 'false',
+            'enable_accel': 'false',
+            
+            # 6. 日志级别
+            'log_level': 'warn'
         }.items()
     )
 
@@ -45,21 +59,21 @@ def generate_launch_description():
     setup_script = """
         echo "[Launch] Step 1: Waiting for RealSense node..."
         # 1. 死循环等待节点出现
-        until ros2 node list | grep -q "/camera/camera"; do
+        until ros2 node list | grep -q "/camera/realsense_d435i"; do
             sleep 1
             echo "[Launch] Waiting for camera node..."
         done
         
         echo "[Launch] Step 2: Configuring camera..."
         # 2. 死循环尝试 Configure，直到成功
-        until ros2 lifecycle set /camera/camera configure; do
+        until ros2 lifecycle set /camera/realsense_d435i configure; do
             sleep 2
             echo "[Launch] Retrying configure..."
         done
 
         echo "[Launch] Step 3: Activating camera..."
         # 3. 死循环尝试 Activate，直到成功
-        until ros2 lifecycle set /camera/camera activate; do
+        until ros2 lifecycle set /camera/realsense_d435i activate; do
             sleep 2
             echo "[Launch] Retrying activate..."
         done

@@ -43,7 +43,7 @@ public:
 
         // 4. 订阅 RGB 图像
         sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "/camera/camera/color/image_raw", 10,
+            "/camera/realsense_d435i/color/image_raw", 10,
             std::bind(&YoloSegNode::ColorCallback, this, std::placeholders::_1));
             
         // 5. 发布可视化结果

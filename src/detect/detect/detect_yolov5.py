@@ -34,8 +34,8 @@ class YoloDetectNode(Node):
         model_filename = self.get_parameter('model_filename').get_parameter_value().string_value
 
         # 3. 初始化通信
-        self.create_subscription(Image, '/camera/camera/color/image_raw', self.listener_callback, 10)
-        self.create_subscription(Image, '/camera/camera/aligned_depth_to_color/image_raw', self.depth_callback, 10)
+        self.create_subscription(Image, '/camera/realsense_d435i/color/image_raw', self.listener_callback, 10)
+        self.create_subscription(Image, '/camera/realsense_d435i/aligned_depth_to_color/image_raw', self.depth_callback, 10)
         self.publisher_ = self.create_publisher(Object3DArray, 'target_points_array', 10)
         
         self.bridge = CvBridge()

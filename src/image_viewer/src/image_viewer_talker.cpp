@@ -91,7 +91,7 @@ private:
     // 5. 发布图像
     std_msgs::msg::Header header;
     header.stamp = this->now();
-    header.frame_id = "projector_frame"; // 或者 camera_frame
+    header.frame_id = "projector_frame";
 
     try {
       auto ros_image = cv_bridge::CvImage(header, "bgr8", image).toImageMsg();
