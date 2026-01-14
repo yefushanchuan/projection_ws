@@ -26,7 +26,7 @@ class YoloDetectNode(Node):
         self.declare_parameter('camera.fy', 905.5208)
         self.declare_parameter('camera.cx', 663.4498)
         self.declare_parameter('camera.cy', 366.7621)
-        self.declare_parameter('conf_thres', 0.35)
+        self.declare_parameter('conf_thres', 0.50)
         self.declare_parameter('show_image', True)
         # 默认模型文件名
         self.declare_parameter('model_filename', 'yolov5x_tag_v7.0_detect_640x640_bayese_nv12.bin')

@@ -11,7 +11,7 @@ def generate_launch_description():
     # ==========================================
     # 0. 声明启动参数 (保持原样)
     # ==========================================
-    conf_thres_arg = DeclareLaunchArgument('conf_thres', default_value='0.35', description='YOLOv5 confidence threshold')
+    conf_thres_arg = DeclareLaunchArgument('conf_thres', default_value='0.50', description='YOLOv5 confidence threshold')
     show_image_arg = DeclareLaunchArgument('show_image', default_value='false', description='Whether to show detection image window')
     x_off_arg = DeclareLaunchArgument('x_offset', default_value='0.00', description='Translation in X')
     y_off_arg = DeclareLaunchArgument('y_offset', default_value='0.00', description='Translation in Y')
