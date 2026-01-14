@@ -23,10 +23,10 @@ MainWindow::MainWindow(QWidget *parent)
     launch_process = new QProcess(this);
     connect(launch_process, &QProcess::readyReadStandardOutput, [this](){
         QByteArray data = launch_process->readAllStandardOutput();
-        qDebug().noquote() << "[LAUNCH]" << data; 
+        qDebug().noquote() << data; 
     });
 
-    setWindowTitle("ROS 2 Control Panel");
+    setWindowTitle("Projection control panel");
     resize(300, 300); // 保持原来的尺寸
 }
 
