@@ -11,7 +11,7 @@ struct Config {
     int reg_max = 16;
     int num_mask = 32;
     std::vector<int> strides = {8, 16, 32};
-    float conf_thres = 0.25;
+    float conf_thres = 0.50;
     float nms_thres = 0.45;
     std::vector<std::string> class_names;
 };
@@ -21,10 +21,7 @@ public:
     BPU_Segment();
     ~BPU_Segment() = default;
 
-    void SetThreshold(float conf, float nms) {
-        config_.conf_thres = conf;
-        config_.nms_thres = nms;
-    }
+    Config config_;
 
     // 1. 预处理
     void PreProcess(const cv::Mat& bgr_img, int model_w, int model_h, cv::Mat& nv12_out);
@@ -38,7 +35,6 @@ public:
     void detect_result(cv::Mat& img, const std::vector<SegResult>& results, double fps, bool show_img);
 
 private:
-    Config config_;             // 核心配置
     bool window_created_ = false;
 
     // === 关键：用于坐标还原的成员变量 ===

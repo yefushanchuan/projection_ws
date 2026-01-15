@@ -22,8 +22,9 @@ public:
         // 默认值只写文件名即可，程序会自动去 share/segment/models/ 下找
         this->declare_parameter("model_filename", "yolo11x_seg_bayese_640x640_nv12.bin");
         this->declare_parameter("show_image", true);
-        this->declare_parameter("conf_thres", 0.25);
+        this->declare_parameter("conf_thres", 0.50);
         this->declare_parameter("nms_thres", 0.45);
+        
         // =======================================================================
         // 2. 智能路径解析 (仿 Python 逻辑)
         // =======================================================================
@@ -35,8 +36,7 @@ public:
         } else {
             // 如果是相对路径/文件名，则拼接 share 目录
             try {
-                std::string share_dir = ament_index_cpp::get_package_share_directory("segment");
-                resolved_model_path_ = share_dir + "/models/" + model_param;
+                resolved_model_path_ = ament_index_cpp::get_package_share_directory("segment") + "/models/" + model_param;
             } catch (const std::exception& e) {
                 RCLCPP_ERROR(this->get_logger(), "Can not find package 'segment': %s", e.what());
                 return;
@@ -66,6 +66,17 @@ public:
 
         segmenter_ = std::make_shared<BPU_Segment>();
 
+        this->get_parameter("show_image", show_img_);
+        this->get_parameter("conf_thres", conf_thres_);
+        this->get_parameter("nms_thres", nms_thres_);
+        
+        // 将成员变量的值同步给算法引擎
+        segmenter_->config_.conf_thres = (float)conf_thres_;
+        segmenter_->config_.nms_thres = (float)nms_thres_;
+
+        callback_handle_ = this->add_on_set_parameters_callback(
+            std::bind(&YoloSegNode::parameter_callback, this, std::placeholders::_1));
+
         // QoS 设置
         rclcpp::QoS qos_profile(1); 
         qos_profile.reliability(rclcpp::ReliabilityPolicy::Reliable);
@@ -94,26 +105,14 @@ protected:
         auto yolo_output = std::dynamic_pointer_cast<YoloOutput>(node_output);
         if (!yolo_output || !yolo_output->src_img) return -1;
 
-        // 1. 【实时获取参数】
-        bool show_img = false;
-        double conf = 0.25;
-        double nms = 0.45;
-        
-        this->get_parameter("show_image", show_img);
-        this->get_parameter("conf_thres", conf);
-        this->get_parameter("nms_thres", nms);
+        UpdateFPS(show_img_);
 
-        // 2. 【更新算法引擎阈值】
-        segmenter_->SetThreshold((float)conf, (float)nms);
-
-        UpdateFPS(show_img);
-
-        // 3. 算法后处理
+        // 算法后处理
         std::vector<SegResult> results;
         segmenter_->PostProcess(node_output->output_tensors, model_input_h_, model_input_w_, results);
         
-        // 4. 可视化
-        if (show_img) {
+        // 可视化
+        if (show_img_) {
             cv::Mat draw_img = yolo_output->src_img->clone();
             segmenter_->detect_result(draw_img, results, fps_, true);
         } else {
@@ -130,6 +129,12 @@ private:
     int model_input_w_ = 0;
     int model_input_h_ = 0;
 
+    bool show_img_ = true; 
+    double conf_thres_ = 0.50;
+    double nms_thres_ = 0.45;
+
+    OnSetParametersCallbackHandle::SharedPtr callback_handle_;
+
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_;
     std::shared_ptr<BPU_Segment> segmenter_;
 
@@ -137,6 +142,33 @@ private:
     std::chrono::steady_clock::time_point last_log_time_;
     int frame_count_ = 0;
     double fps_ = 0.0;
+
+    rcl_interfaces::msg::SetParametersResult parameter_callback(
+        const std::vector<rclcpp::Parameter> &params) {
+        rcl_interfaces::msg::SetParametersResult result;
+        result.successful = true;
+        result.reason = "success";
+
+        for (const auto &param : params) {
+            if (param.get_name() == "conf_thres") {
+                if (segmenter_) {
+                    segmenter_->config_.conf_thres = (float)param.as_double();
+                    RCLCPP_INFO(this->get_logger(), "Updated conf_thres: %.2f", segmenter_->config_.conf_thres);
+                }
+            }
+            else if (param.get_name() == "nms_thres") {
+                if (segmenter_) {
+                    segmenter_->config_.nms_thres = (float)param.as_double();
+                    RCLCPP_INFO(this->get_logger(), "Updated nms_thres: %.2f", segmenter_->config_.nms_thres);
+                }
+            }
+            else if (param.get_name() == "show_image") {
+                show_img_ = param.as_bool();
+                RCLCPP_INFO(this->get_logger(), "Updated show_image: %s", show_img_ ? "true" : "false");
+            }
+        }
+        return result;
+    }
 
     void UpdateFPS(bool show_img) {
         auto now = std::chrono::steady_clock::now();

@@ -208,18 +208,40 @@ cv::Scalar BPU_Segment::GetColor(int id) {
 void BPU_Segment::draw_detection(cv::Mat& img, const SegResult& res) {
     cv::Scalar color = GetColor(res.id);
 
-    // 1. 绘制 Mask (Resize 到原图大小)
-    cv::Mat mask_final;
+    // 1. 绘制 Mask
     if (!res.mask.empty()) {
-        cv::resize(res.mask, mask_final, img.size(), 0, 0, cv::INTER_NEAREST);
+        cv::Mat mask_final;
+        // 使用线性插值会让边缘平滑一点，不想平滑可用 INTER_NEAREST
+        cv::resize(res.mask, mask_final, img.size(), 0, 0, cv::INTER_LINEAR);
         
+        // =========================================================
+        // !!! 修复核心：只保留检测框内部的 Mask !!!
+        // =========================================================
+        
+        // 1. 生成二值化 Mask (阈值 0.5)
         cv::Mat mask_bin = mask_final > 0.5;
+
+        // 2. 创建一个全黑的容器
+        cv::Mat mask_clipped = cv::Mat::zeros(img.size(), CV_8UC1);
+
+        // 3. 计算安全的 ROI (防止框超出图像边界导致崩溃)
+        cv::Rect safe_box = res.box & cv::Rect(0, 0, img.cols, img.rows);
+
+        // 4. 只将 safe_box 区域内的 mask_bin 拷贝到 mask_clipped
+        if (safe_box.area() > 0) {
+            mask_bin(safe_box).copyTo(mask_clipped(safe_box));
+        }
+
+        // =========================================================
+
+        // 5. 混合颜色 (使用经过裁剪的 mask_clipped)
         cv::Mat roi;
         cv::Mat color_mask(img.size(), CV_8UC3, color);
         
-        img.copyTo(roi, mask_bin);
+        // 只在 mask_clipped 为白色的地方进行混合
+        img.copyTo(roi, mask_clipped);
         cv::addWeighted(roi, 0.6, color_mask, 0.4, 0.0, roi);
-        roi.copyTo(img, mask_bin);
+        roi.copyTo(img, mask_clipped);
     }
 
     // 2. 绘制 Box
