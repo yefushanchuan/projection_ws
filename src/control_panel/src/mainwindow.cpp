@@ -50,7 +50,7 @@ MainWindow::~MainWindow() {
     // 3. 【核心优化】退出时的清理
     // 包含了 sem.fastrtps_* 的清理，解决 Realsense 锁死问题
     QString cleanupCmd = 
-        "pkill -9 -f detect_yolov5; "
+        "pkill -9 -f yolo_detect_node; "
         "pkill -9 -f transform_node; "
         "pkill -9 -f image_viewer; "
         "pkill -9 -f realsense; "
@@ -79,7 +79,7 @@ void MainWindow::forceCleanUp() {
         "killall -9 transform_node; "
 
         // 4. Python 节点 (YOLO通常是Python脚本，killall可能抓不到，用 pkill -f 补刀)
-        "pkill -9 -f detect_yolov5; " 
+        "pkill -9 -f yolo_detect_node; " 
 
         // 5. 杀掉 Launch 父脚本
         "pkill -9 -f system_launch.py; "

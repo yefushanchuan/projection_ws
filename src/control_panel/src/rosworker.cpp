@@ -10,8 +10,8 @@ RosWorker::RosWorker(QObject *parent)
     // 客户端 A: 控制 XYZ 偏移 (C++节点: transform_node)
     client_transform_ = std::make_shared<rclcpp::AsyncParametersClient>(node_, "transform_node");
     
-    // 客户端 B: 控制是否显示图像 (Python节点: detect_yolov5_node)
-    client_detect_ = std::make_shared<rclcpp::AsyncParametersClient>(node_, "detect_yolov5_node");
+    // 客户端 B: 控制是否显示图像 (Python节点: yolo_detect_node)
+    client_detect_ = std::make_shared<rclcpp::AsyncParametersClient>(node_, "yolo_detect_node");
 }
 
 RosWorker::~RosWorker()

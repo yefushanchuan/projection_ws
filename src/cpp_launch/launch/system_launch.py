@@ -105,8 +105,8 @@ def generate_launch_description():
             # (A) YOLO Detect Node
             Node(
                 package='detect',
-                executable='detect_yolov5',
-                name='detect_yolov5_node',
+                executable='yolo_detect_node',
+                name='yolo_detect_node',
                 output='screen',
                 parameters=[{
                     'conf_thres': LaunchConfiguration('conf_thres'),
