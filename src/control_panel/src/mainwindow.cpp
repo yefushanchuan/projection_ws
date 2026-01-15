@@ -283,8 +283,8 @@ void MainWindow::setupUi() {
             });
     };
 
-    createRow("X Offset (正即相机相对投影向左):", "x_offset", 0.00, spin_x);
-    createRow("Y Offset (正即相机相对投影向上):", "y_offset", 0.00, spin_y);
+    createRow("X Offset (正即相机相对投影向左):", "x_offset", -0.01, spin_x);
+    createRow("Y Offset (正即相机相对投影向上):", "y_offset", 0.06, spin_y);
     createRow("Z Offset (正即相机相对投影向后):", "z_offset", 0.00, spin_z);
 
     mainLayout->addWidget(grpParam);
