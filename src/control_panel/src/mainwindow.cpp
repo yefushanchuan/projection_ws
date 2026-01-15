@@ -185,6 +185,8 @@ void MainWindow::onStopClicked()
     btn_browse->setEnabled(true);
     
     statusLabel->setText("系统已停止");
+
+    qDebug() << "系统清理完毕"; 
 }
 
 void MainWindow::onParamChanged(const QString &name, double value) {
