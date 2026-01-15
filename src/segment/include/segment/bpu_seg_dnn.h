@@ -1,5 +1,5 @@
-#ifndef BPU_SEG_HOBOT_DNN_H
-#define BPU_SEG_HOBOT_DNN_H
+#ifndef bpu_seg_dnn_H
+#define bpu_seg_dnn_H
 
 #include "yolo_seg_common.h"
 #include <vector>
@@ -53,4 +53,4 @@ private:
 
 } // namespace yolo_seg
 
-#endif // BPU_SEG_HOBOT_DNN_H
+#endif // bpu_seg_dnn_H

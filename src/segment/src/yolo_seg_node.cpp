@@ -7,7 +7,7 @@
 
 // 引入分层后的头文件
 #include "segment/yolo_seg_common.h"
-#include "segment/bpu_seg_hobot_dnn.h"
+#include "segment/bpu_seg_dnn.h"
 
 using hobot::dnn_node::DNNInput;
 using hobot::dnn_node::DnnNodeOutput;

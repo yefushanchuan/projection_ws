@@ -1,4 +1,4 @@
-#include "segment/bpu_seg_hobot_dnn.h"
+#include "segment/bpu_seg_dnn.h"
 #include <cmath>
 #include <algorithm>
 
