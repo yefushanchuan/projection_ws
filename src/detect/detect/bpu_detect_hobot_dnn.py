@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from hobot_dnn import pyeasy_dnn as dnn //底层
+from hobot_dnn import pyeasy_dnn as dnn #底层
 
 class BPU_Detect:
     def __init__(self, model_path:str,

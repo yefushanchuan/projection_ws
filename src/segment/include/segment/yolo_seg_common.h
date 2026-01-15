@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "dnn_node/dnn_node_data.h"
+#include "dnn_node/dnn_node_data.h" # 中间层
 
 namespace yolo_seg {
 
