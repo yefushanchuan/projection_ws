@@ -1,19 +1,17 @@
-#ifndef bpu_seg_dnn_H
-#define bpu_seg_dnn_H
+#ifndef BPU_SEG_DNN_H
+#define BPU_SEG_DNN_H
 
 #include "yolo_seg_common.h"
 #include <vector>
 #include <string>
 
-namespace yolo_seg {
-
-// 配置结构体
+// 定义配置结构体
 struct Config {
     int class_num = 80;
     int reg_max = 16;
     int num_mask = 32;
     std::vector<int> strides = {8, 16, 32};
-    float score_thres = 0.25;
+    float conf_thres = 0.25;
     float nms_thres = 0.45;
     std::vector<std::string> class_names;
 };
@@ -23,34 +21,36 @@ public:
     BPU_Segment();
     ~BPU_Segment() = default;
 
-    // 1. 预处理：对应 Python 的 PreProcess
-    // 将 BGR 图像 Resize 并转换为 NV12，供推理使用
-    void PreProcess(const cv::Mat& bgr_img, 
-                    int model_w, int model_h, 
-                    cv::Mat& nv12_out);
+    void SetThreshold(float conf, float nms) {
+        config_.conf_thres = conf;
+        config_.nms_thres = nms;
+    }
 
-    // 2. 后处理：对应 Python 的 PostProcess
-    // 解析 Tensor 输出，生成结果
+    // 1. 预处理
+    void PreProcess(const cv::Mat& bgr_img, int model_w, int model_h, cv::Mat& nv12_out);
+
+    // 2. 后处理
     void PostProcess(const std::vector<std::shared_ptr<hobot::dnn_node::DNNTensor>>& tensors,
                      int model_h, int model_w,
                      std::vector<SegResult>& results);
 
-    // 3. 可视化：对应 Python 的 detect_result / draw_detection
-    void Visualize(cv::Mat& img, 
-                   const std::vector<SegResult>& results, 
-                   int model_w, int model_h, 
-                   double fps,
-                   bool show_window = true);
+    // 3. 可视化绘制 (整合了 draw 和 show)
+    void detect_result(cv::Mat& img, const std::vector<SegResult>& results, double fps, bool show_img);
 
 private:
-    Config config_;
+    Config config_;             // 核心配置
     bool window_created_ = false;
 
-    // 内部辅助函数
-    cv::Scalar GetColor(int id);
+    // === 关键：用于坐标还原的成员变量 ===
+    float ratio_ = 1.0f;
+    int pad_w_ = 0;
+    int pad_h_ = 0;
+
+    // === 关键：内部辅助函数声明 ===
+    void Letterbox(const cv::Mat& src, int target_w, int target_h, cv::Mat& dst);
     void BGRToNV12(const cv::Mat& bgr, cv::Mat& nv12);
+    void draw_detection(cv::Mat& img, const SegResult& res);
+    cv::Scalar GetColor(int id);
 };
 
-} // namespace yolo_seg
-
-#endif // bpu_seg_dnn_H
+#endif // BPU_SEG_DNN_H

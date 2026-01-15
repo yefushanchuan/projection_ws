@@ -12,6 +12,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(dnn_node REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 
 # 2. TROS/BPU Library Paths
 if(DEFINED ENV{TROS_DISTRO})
@@ -52,6 +53,7 @@ ament_target_dependencies(yolo_seg_node
   sensor_msgs
   cv_bridge
   dnn_node
+  ament_index_cpp
 )
 
 target_link_libraries(yolo_seg_node

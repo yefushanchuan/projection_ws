@@ -5,9 +5,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "dnn_node/dnn_node_data.h" // 中间层
-
-namespace yolo_seg {
+#include "dnn_node/dnn_node_data.h"
 
 // 检测与分割结果
 struct SegResult {
@@ -22,7 +20,5 @@ struct SegResult {
 struct YoloOutput : public hobot::dnn_node::DnnNodeOutput {
     std::shared_ptr<cv::Mat> src_img; // 携带原始 BGR 图像用于画图
 };
-
-} // namespace yolo_seg
 
 #endif // YOLO_SEG_COMMON_H

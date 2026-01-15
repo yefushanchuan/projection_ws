@@ -4,8 +4,9 @@
 #include "dnn_node/dnn_node.h"
 #include "dnn_node/util/image_proc.h"
 #include <chrono>
+#include <fstream>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 
-// 引入分层后的头文件
 #include "segment/yolo_seg_common.h"
 #include "segment/bpu_seg_dnn.h"
 
@@ -18,107 +19,142 @@ public:
         : hobot::dnn_node::DnnNode(node_name, options) {
         
         // 1. 声明参数
-        this->declare_parameter("model_filename", "/home/sunrise/projection_ws/src/segment/models/yolo11x_seg_bayese_640x640_nv12.bin");
-        this->declare_parameter("show_image", true); // 仿照 python 增加开关
+        // 默认值只写文件名即可，程序会自动去 share/segment/models/ 下找
+        this->declare_parameter("model_filename", "yolo11x_seg_bayese_640x640_nv12.bin");
+        this->declare_parameter("show_image", true);
+        this->declare_parameter("conf_thres", 0.25);
+        this->declare_parameter("nms_thres", 0.45);
+        // =======================================================================
+        // 2. 智能路径解析 (仿 Python 逻辑)
+        // =======================================================================
+        std::string model_param = this->get_parameter("model_filename").as_string();
+        
+        // 判断是否为绝对路径 (以 / 开头)
+        if (model_param.front() == '/') {
+            resolved_model_path_ = model_param;
+        } else {
+            // 如果是相对路径/文件名，则拼接 share 目录
+            try {
+                std::string share_dir = ament_index_cpp::get_package_share_directory("segment");
+                resolved_model_path_ = share_dir + "/models/" + model_param;
+            } catch (const std::exception& e) {
+                RCLCPP_ERROR(this->get_logger(), "Can not find package 'segment': %s", e.what());
+                return;
+            }
+        }
 
-        // 2. 初始化 DNN
+        // 检查文件是否存在
+        std::ifstream f(resolved_model_path_.c_str());
+        if (!f.good()) {
+            RCLCPP_ERROR(this->get_logger(), "Model file not found: %s", resolved_model_path_.c_str());
+            // 这里不 return，让 Init() 去报错，或者你可以选择直接 throw
+        } else {
+            RCLCPP_INFO(this->get_logger(), "Loading Model: %s", resolved_model_path_.c_str());
+        }
+
+        // =======================================================================
+        // 3. 初始化 DNN (Init 会调用 SetNodePara)
+        // =======================================================================
         if (Init() != 0) {
             RCLCPP_ERROR(this->get_logger(), "Init failed!");
             return;
         }
 
-        // 3. 获取模型输入尺寸
         if (GetModelInputSize(0, model_input_w_, model_input_h_) < 0) {
              RCLCPP_ERROR(this->get_logger(), "Get model input size failed!");
         }
 
-        // 4. 初始化算法引擎 (相当于 Python 的 self.detector = BPU_Detect(...))
-        segmenter_ = std::make_shared<yolo_seg::BPU_Segment>();
+        segmenter_ = std::make_shared<BPU_Segment>();
 
-        // 5. 订阅与发布
+        // QoS 设置
+        rclcpp::QoS qos_profile(1); 
+        qos_profile.reliability(rclcpp::ReliabilityPolicy::Reliable);
+        qos_profile.history(rclcpp::HistoryPolicy::KeepLast);
+
         sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "/camera/realsense_d435i/color/image_raw", 10,
+            "/camera/realsense_d435i/color/image_raw", qos_profile,
             std::bind(&YoloSegNode::ColorCallback, this, std::placeholders::_1));
-            
-        pub_ = this->create_publisher<sensor_msgs::msg::Image>("yolo_seg_visual", 10);
-        
-        // FPS 统计
+             
         last_calc_time_ = std::chrono::steady_clock::now();
         last_log_time_ = std::chrono::steady_clock::now();
     }
 
 protected:
-    // 设置 DNN 参数
     int SetNodePara() override {
         if (!dnn_node_para_ptr_) return -1;
-        dnn_node_para_ptr_->model_file = this->get_parameter("model_filename").as_string();
+        // 使用我们在构造函数中解析好的绝对路径
+        dnn_node_para_ptr_->model_file = resolved_model_path_;
         dnn_node_para_ptr_->task_num = 2; 
         return 0;
     }
 
-    // 推理完成后的回调 (Process)
     int PostProcess(const std::shared_ptr<DnnNodeOutput>& node_output) override {
         if (!node_output) return -1;
 
-        // 1. 获取上下文 (原图)
-        auto yolo_output = std::dynamic_pointer_cast<yolo_seg::YoloOutput>(node_output);
+        auto yolo_output = std::dynamic_pointer_cast<YoloOutput>(node_output);
         if (!yolo_output || !yolo_output->src_img) return -1;
 
-        // 2. 计算 FPS
-        UpdateFPS();
+        // 1. 【实时获取参数】
+        bool show_img = false;
+        double conf = 0.25;
+        double nms = 0.45;
+        
+        this->get_parameter("show_image", show_img);
+        this->get_parameter("conf_thres", conf);
+        this->get_parameter("nms_thres", nms);
 
-        // 3. 调用引擎进行后处理 (PostProcess)
-        std::vector<yolo_seg::SegResult> results;
+        // 2. 【更新算法引擎阈值】
+        segmenter_->SetThreshold((float)conf, (float)nms);
+
+        UpdateFPS(show_img);
+
+        // 3. 算法后处理
+        std::vector<SegResult> results;
         segmenter_->PostProcess(node_output->output_tensors, model_input_h_, model_input_w_, results);
         
-        // 4. 调用引擎进行可视化 (Visualize)
-        // 获取参数开关，类似于 Python 中的 detect_result(show_img=...)
-        bool show_img = this->get_parameter("show_image").as_bool();
-        
-        // 准备画图用的 Mat (深拷贝)
-        cv::Mat draw_img = yolo_output->src_img->clone();
-        
-        segmenter_->Visualize(draw_img, results, model_input_w_, model_input_h_, fps_, show_img);
-
-        // 5. 发布 ROS 话题
-        if (pub_->get_subscription_count() > 0) {
-            std_msgs::msg::Header header = *(node_output->msg_header);
-            auto msg = cv_bridge::CvImage(header, "bgr8", draw_img).toImageMsg();
-            pub_->publish(*msg);
+        // 4. 可视化
+        if (show_img) {
+            cv::Mat draw_img = yolo_output->src_img->clone();
+            segmenter_->detect_result(draw_img, results, fps_, true);
+        } else {
+            cv::Mat dummy_img; 
+            segmenter_->detect_result(dummy_img, results, fps_, false);
         }
 
         return 0;
     }
 
 private:
+    std::string resolved_model_path_; // 存储解析后的模型路径
+
     int model_input_w_ = 0;
     int model_input_h_ = 0;
 
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_;
-    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_;
-    
-    // 算法引擎实例
-    std::shared_ptr<yolo_seg::BPU_Segment> segmenter_;
+    std::shared_ptr<BPU_Segment> segmenter_;
 
-    // FPS 变量
     std::chrono::steady_clock::time_point last_calc_time_;
     std::chrono::steady_clock::time_point last_log_time_;
     int frame_count_ = 0;
     double fps_ = 0.0;
 
-    void UpdateFPS() {
+    void UpdateFPS(bool show_img) {
         auto now = std::chrono::steady_clock::now();
         frame_count_++;
         auto calc_dur = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_calc_time_).count();
+        
         if (calc_dur >= 1000) { 
             fps_ = frame_count_ * 1000.0 / calc_dur;
             frame_count_ = 0;
             last_calc_time_ = now;
         }
-        auto log_dur = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_log_time_).count();
-        if (log_dur >= 5000) {
-            RCLCPP_INFO(this->get_logger(), "Current FPS: %.2f", fps_);
-            last_log_time_ = now;
+
+        if (!show_img) {
+            auto log_dur = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_log_time_).count();
+            if (log_dur >= 5000) { 
+                RCLCPP_INFO(this->get_logger(), "Node Running - FPS: %.2f", fps_);
+                last_log_time_ = now;
+            }
         }
     }
 
@@ -133,7 +169,6 @@ private:
             return;
         }
 
-        // 1. 统一缩放至 1280x720 (保持原逻辑)
         cv::Mat display_img;
         if (cv_ptr->image.cols != 1280 || cv_ptr->image.rows != 720) {
             cv::resize(cv_ptr->image, display_img, cv::Size(1280, 720));
@@ -141,11 +176,9 @@ private:
             display_img = cv_ptr->image;
         }
 
-        // 2. 调用引擎进行预处理 (PreProcess -> NV12)
         cv::Mat nv12_mat;
         segmenter_->PreProcess(display_img, model_input_w_, model_input_h_, nv12_mat);
 
-        // 3. 构建 BPU 输入
         auto pyramid = hobot::dnn_node::ImageProc::GetNV12PyramidFromNV12Img(
             reinterpret_cast<const char*>(nv12_mat.data),
             model_input_h_, model_input_w_, 
@@ -153,12 +186,10 @@ private:
         );
         auto inputs = std::vector<std::shared_ptr<DNNInput>>{pyramid};
 
-        // 4. 构建上下文输出 (携带原图)
-        auto output = std::make_shared<yolo_seg::YoloOutput>();
+        auto output = std::make_shared<YoloOutput>();
         output->msg_header = std::make_shared<std_msgs::msg::Header>(msg->header);
         output->src_img = std::make_shared<cv::Mat>(display_img.clone()); 
 
-        // 5. 执行推理
         Run(inputs, output, nullptr, false);
     }
 };
