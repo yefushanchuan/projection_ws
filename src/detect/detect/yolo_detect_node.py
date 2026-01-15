@@ -6,7 +6,7 @@ import cv2
 import os
 import time
 from ament_index_python.packages import get_package_share_directory
-from detect.bpu_infer_hobot import BPU_Detect
+from detect.bpu_detect_hobot_dnn import BPU_Detect
 from rcl_interfaces.msg import SetParametersResult 
 from object3d_msgs.msg import Object3D, Object3DArray
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
