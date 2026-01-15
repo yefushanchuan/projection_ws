@@ -1,5 +1,5 @@
-#ifndef YOLO_SEG_ENGINE_H
-#define YOLO_SEG_ENGINE_H
+#ifndef BPU_SEG_HOBOT_DNN_H
+#define BPU_SEG_HOBOT_DNN_H
 
 #include "yolo_seg_common.h"
 #include <vector>
@@ -18,10 +18,10 @@ struct Config {
     std::vector<std::string> class_names;
 };
 
-class YoloEngine {
+class BPU_Segment {
 public:
-    YoloEngine();
-    ~YoloEngine() = default;
+    BPU_Segment();
+    ~BPU_Segment() = default;
 
     // 1. 预处理：对应 Python 的 PreProcess
     // 将 BGR 图像 Resize 并转换为 NV12，供推理使用
@@ -53,4 +53,4 @@ private:
 
 } // namespace yolo_seg
 
-#endif // YOLO_SEG_ENGINE_H
+#endif // BPU_SEG_HOBOT_DNN_H

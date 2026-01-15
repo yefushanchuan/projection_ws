@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-import bpu_infer_lib
+import bpu_infer_lib //中间层
 
 class BPU_Detect:
     def __init__(self, model_path:str,

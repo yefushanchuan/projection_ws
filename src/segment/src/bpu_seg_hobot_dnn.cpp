@@ -1,4 +1,4 @@
-#include "segment/yolo_engine.h"
+#include "segment/bpu_seg_hobot_dnn.h"
 #include <cmath>
 #include <algorithm>
 
@@ -14,13 +14,13 @@ inline float sigmoid(float x) {
     return 1.0f / (1.0f + std::exp(-x));
 }
 
-YoloEngine::YoloEngine() {
+BPU_Segment::BPU_Segment() {
     config_.class_names.resize(80, "object");
     // 这里可以扩展加载 names 文件
     config_.class_names[0] = "person";
 }
 
-void YoloEngine::BGRToNV12(const cv::Mat& bgr, cv::Mat& nv12) {
+void BPU_Segment::BGRToNV12(const cv::Mat& bgr, cv::Mat& nv12) {
     int w = bgr.cols;
     int h = bgr.rows;
     cv::Mat yuv_i420;
@@ -36,7 +36,7 @@ void YoloEngine::BGRToNV12(const cv::Mat& bgr, cv::Mat& nv12) {
     }
 }
 
-void YoloEngine::PreProcess(const cv::Mat& bgr_img, int model_w, int model_h, cv::Mat& nv12_out) {
+void BPU_Segment::PreProcess(const cv::Mat& bgr_img, int model_w, int model_h, cv::Mat& nv12_out) {
     // 1. Resize 到模型输入大小
     cv::Mat resized_img;
     cv::resize(bgr_img, resized_img, cv::Size(model_w, model_h));
@@ -45,7 +45,7 @@ void YoloEngine::PreProcess(const cv::Mat& bgr_img, int model_w, int model_h, cv
     BGRToNV12(resized_img, nv12_out);
 }
 
-void YoloEngine::PostProcess(const std::vector<std::shared_ptr<hobot::dnn_node::DNNTensor>>& tensors,
+void BPU_Segment::PostProcess(const std::vector<std::shared_ptr<hobot::dnn_node::DNNTensor>>& tensors,
                              int model_h, int model_w,
                              std::vector<SegResult>& results) {
     std::vector<int> class_ids;
@@ -172,14 +172,14 @@ void YoloEngine::PostProcess(const std::vector<std::shared_ptr<hobot::dnn_node::
     }
 }
 
-cv::Scalar YoloEngine::GetColor(int id) {
+cv::Scalar BPU_Segment::GetColor(int id) {
     int r = (id * 123 + 45) % 255;
     int g = (id * 234 + 90) % 255;
     int b = (id * 345 + 135) % 255;
     return cv::Scalar(b, g, r);
 }
 
-void YoloEngine::Visualize(cv::Mat& draw_img, 
+void BPU_Segment::Visualize(cv::Mat& draw_img, 
                            const std::vector<SegResult>& results, 
                            int model_w, int model_h, 
                            double fps,

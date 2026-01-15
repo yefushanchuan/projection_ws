@@ -30,16 +30,16 @@ link_directories(
 
 # =========================================================================
 # 3. Build Executable (核心修改)
-# 将 yolo_seg_node.cpp 和 yolo_engine.cpp 一起编译
+# 将 yolo_seg_node.cpp 和 bpu_seg_hobot_dnn.cpp 一起编译
 # =========================================================================
 add_executable(yolo_seg_node 
   src/yolo_seg_node.cpp
-  src/yolo_engine.cpp
+  src/bpu_seg_hobot_dnn.cpp
 )
 
 # 4. Include Directories
-# "include" 目录包含了 include/segment/yolo_engine.h
-# 代码中可以使用 #include "segment/yolo_engine.h"
+# "include" 目录包含了 include/segment/bpu_seg_hobot_dnn.h
+# 代码中可以使用 #include "segment/bpu_seg_hobot_dnn.h"
 include_directories(
   include
   ${OpenCV_INCLUDE_DIRS}

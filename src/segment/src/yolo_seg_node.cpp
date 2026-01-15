@@ -7,7 +7,7 @@
 
 // 引入分层后的头文件
 #include "segment/yolo_seg_common.h"
-#include "segment/yolo_engine.h"
+#include "segment/bpu_seg_hobot_dnn.h"
 
 using hobot::dnn_node::DNNInput;
 using hobot::dnn_node::DnnNodeOutput;
@@ -33,7 +33,7 @@ public:
         }
 
         // 4. 初始化算法引擎 (相当于 Python 的 self.detector = BPU_Detect(...))
-        engine_ = std::make_shared<yolo_seg::YoloEngine>();
+        segmenter_ = std::make_shared<yolo_seg::BPU_Segment>();
 
         // 5. 订阅与发布
         sub_ = this->create_subscription<sensor_msgs::msg::Image>(
@@ -69,7 +69,7 @@ protected:
 
         // 3. 调用引擎进行后处理 (PostProcess)
         std::vector<yolo_seg::SegResult> results;
-        engine_->PostProcess(node_output->output_tensors, model_input_h_, model_input_w_, results);
+        segmenter_->PostProcess(node_output->output_tensors, model_input_h_, model_input_w_, results);
         
         // 4. 调用引擎进行可视化 (Visualize)
         // 获取参数开关，类似于 Python 中的 detect_result(show_img=...)
@@ -78,7 +78,7 @@ protected:
         // 准备画图用的 Mat (深拷贝)
         cv::Mat draw_img = yolo_output->src_img->clone();
         
-        engine_->Visualize(draw_img, results, model_input_w_, model_input_h_, fps_, show_img);
+        segmenter_->Visualize(draw_img, results, model_input_w_, model_input_h_, fps_, show_img);
 
         // 5. 发布 ROS 话题
         if (pub_->get_subscription_count() > 0) {
@@ -98,7 +98,7 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_;
     
     // 算法引擎实例
-    std::shared_ptr<yolo_seg::YoloEngine> engine_;
+    std::shared_ptr<yolo_seg::BPU_Segment> segmenter_;
 
     // FPS 变量
     std::chrono::steady_clock::time_point last_calc_time_;
@@ -143,7 +143,7 @@ private:
 
         // 2. 调用引擎进行预处理 (PreProcess -> NV12)
         cv::Mat nv12_mat;
-        engine_->PreProcess(display_img, model_input_w_, model_input_h_, nv12_mat);
+        segmenter_->PreProcess(display_img, model_input_w_, model_input_h_, nv12_mat);
 
         // 3. 构建 BPU 输入
         auto pyramid = hobot::dnn_node::ImageProc::GetNV12PyramidFromNV12Img(
