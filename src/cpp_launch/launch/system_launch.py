@@ -3,23 +3,30 @@ from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, ExecuteProcess, RegisterEventHandler, DeclareLaunchArgument, GroupAction, LogInfo
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.conditions import IfCondition
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     # ==========================================
-    # 0. 声明启动参数 (保持原样)
+    # 0. 声明启动参数
     # ==========================================
-    conf_thres_arg = DeclareLaunchArgument('conf_thres', default_value='0.50', description='YOLOv5 confidence threshold')
+    conf_thres_arg = DeclareLaunchArgument('conf_thres', default_value='0.50', description='confidence threshold')
     show_image_arg = DeclareLaunchArgument('show_image', default_value='false', description='Whether to show detection image window')
     x_off_arg = DeclareLaunchArgument('x_offset', default_value='0.00', description='Translation in X')
     y_off_arg = DeclareLaunchArgument('y_offset', default_value='0.00', description='Translation in Y')
     z_off_arg = DeclareLaunchArgument('z_offset', default_value='0.00', description='Translation in Z')
     model_arg = DeclareLaunchArgument('model_filename', default_value='yolov5x_tag_v7.0_detect_640x640_bayese_nv12.bin', description='Model filename')
+    
+    # ==========================================
+    # 0. 判断模型类型
+    # ==========================================
+    is_seg_model = PythonExpression(["'seg' in '", LaunchConfiguration('model_filename'), "'"])
+    is_detect_model = PythonExpression(["'seg' not in '", LaunchConfiguration('model_filename'), "'"])
 
     # ==========================================
-    # 1. RealSense 相机启动 (基础驱动)
+    # 2. RealSense 相机启动 (基础驱动)
     # ==========================================
     rs_camera_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -48,18 +55,13 @@ def generate_launch_description():
             # 推荐：时间滤镜 (减少深度值随时间的抖动，让测距数值更稳)
             'temporal_filter.enable': 'true',       
             
-            # === 4. 关闭不需要的功能 (节省资源) ===
-            'pointcloud.enable': 'false',
-            'enable_gyro': 'false',
-            'enable_accel': 'false',
-            
-            # === 5. 日志 ===
+            # === 4. 日志 ===
             'log_level': 'warn'
         }.items()
     )
 
     # ==========================================
-    # 2. 智能激活脚本 (改动点：循环检测 + 合并逻辑)
+    # 3. 智能激活脚本 (改动点：循环检测 + 合并逻辑)
     # ==========================================
     # 这个脚本会一直运行，直到相机完全激活 (Active) 才会退出
     setup_script = """
@@ -95,23 +97,38 @@ def generate_launch_description():
     )
 
     # ==========================================
-    # 3. 核心处理节点组 (改动点：打包但不立即运行)
+    # 4. 核心处理节点组 (改动点：打包但不立即运行)
     # ==========================================
     # 这里放所有的算法节点：detect, transform, viewer
     algorithm_nodes = GroupAction(
         actions=[
-            LogInfo(msg="[Launch] Camera ready! Starting Deep Learning nodes..."),
+            LogInfo(msg="[Launch] Camera ready! Checking model type..."),
             
-            # (A) YOLO Detect Node
+            # (A1) YOLO Detect Node
             Node(
                 package='detect',
                 executable='yolo_detect_node',
-                name='yolo_detect_node',
+                name='inference_node',
                 output='screen',
+                condition=IfCondition(is_detect_model),
                 parameters=[{
                     'conf_thres': LaunchConfiguration('conf_thres'),
                     'show_image': LaunchConfiguration('show_image'),
                     'model_filename': LaunchConfiguration('model_filename')
+                }]
+            ),
+
+            # (A2) YOLO Segment Node
+            Node(
+                package='segment',
+                executable='yolo_seg_node',
+                name='inference_node',
+                output='screen',
+                condition=IfCondition(is_seg_model),
+                parameters=[{
+                    'conf_thres': LaunchConfiguration('conf_thres'),
+                    'show_image': LaunchConfiguration('show_image'),
+                    'model_filename': LaunchConfiguration('model_filename'),
                 }]
             ),
 
@@ -147,7 +164,7 @@ def generate_launch_description():
     )
 
     # ==========================================
-    # 4. 事件处理器 (改动点：核心逻辑)
+    # 5. 事件处理器 (改动点：核心逻辑)
     # ==========================================
     # 逻辑：当 camera_setup_cmd 进程退出（on_exit）时 -> 启动 algorithm_nodes
     event_handler = RegisterEventHandler(

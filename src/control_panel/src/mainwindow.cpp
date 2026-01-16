@@ -46,57 +46,36 @@ MainWindow::~MainWindow() {
     if(rclcpp::ok()) {
         rclcpp::shutdown();
     }
-
-    // 3. 【核心优化】退出时的清理
-    // 包含了 sem.fastrtps_* 的清理，解决 Realsense 锁死问题
-    QString cleanupCmd = 
-        "pkill -9 -f yolo_detect_node; "
-        "pkill -9 -f transform_node; "
-        "pkill -9 -f image_viewer; "
-        "pkill -9 -f realsense; "
-        "pkill -9 -f component_container; "
-        "pkill -9 -f system_launch.py; "
-        "pkill -9 -f cpp_launch; "
-        "pkill -9 -f robot_state_publisher; "
-        "rm -f /dev/shm/fastrtps_*; "      // 清理数据段
-        "rm -f /dev/shm/sem.fastrtps_*; "  // 【关键】清理信号量锁
-        "ros2 daemon stop";                // 退出时停止 daemon
-
-    QProcess::startDetached("bash", QStringList() << "-c" << cleanupCmd);
+    
+    forceCleanUp(false); 
 }
 
-void MainWindow::forceCleanUp() {
-    // 基于你提供的 ps -ef 日志，这是最精准的“点名查杀”
+void MainWindow::forceCleanUp(bool is_blocking) {
     QString cleanupCmd = 
-        // 1. 【必须死】这是那个关不掉的窗口进程 (来自你的日志)
+        "("
         "killall -9 image_viewer_listener; "
-        
-        // 2. 【必须死】这是相机的驱动进程 (来自你的日志)
-        "killall -9 realsense2_camera_node; "
-        
-        // 3. 其他 C++ 节点 (来自你的日志)
         "killall -9 image_viewer_talker; "
         "killall -9 transform_node; "
-
-        // 4. Python 节点 (YOLO通常是Python脚本，killall可能抓不到，用 pkill -f 补刀)
+        "killall -9 realsense2_camera_node; "
         "pkill -9 -f yolo_detect_node; " 
-
-        // 5. 杀掉 Launch 父脚本
+        "pkill -9 -f yolo_seg_node; "     
+        "pkill -9 -f inference_node; "    
         "pkill -9 -f system_launch.py; "
-
-        // 6. 杀掉组件容器 (防止有节点跑在容器里)
-        "pkill -9 -f component_container; "
-
-        // 7. 清理 ROS 2 通信残留 (解决报错)
+        "pkill -9 -f component_container; " 
         "rm -f /dev/shm/fastrtps_*; "
         "rm -f /dev/shm/sem.fastrtps_*; "
-        
-        // 8. 停止守护进程
-        "ros2 daemon stop"; 
+        "ros2 daemon stop"
+        ") 2>/dev/null";
 
-    // 执行命令
-    // 这里会忽略 "no process found" 的错误提示，只管杀
-    QProcess::execute("bash", QStringList() << "-c" << cleanupCmd);
+    if (is_blocking) {
+        // 场景 A：点击停止按钮。
+        // 必须死等清理完，防止用户手快立刻点启动。
+        QProcess::execute("bash", QStringList() << "-c" << cleanupCmd);
+    } else {
+        // 场景 B：关闭窗口/析构。
+        // 启动一个后台幽灵进程去清理，主程序立刻退出，不要卡顿。
+        QProcess::startDetached("bash", QStringList() << "-c" << cleanupCmd);
+    }
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
@@ -122,8 +101,7 @@ void MainWindow::onStartClicked()
     QString model_str = le_model_path->text().trimmed();
 
     // 3. 构造脚本
-    QString script = QString("source /opt/ros/humble/setup.bash && "
-                             "ros2 launch cpp_launch system_launch.py " 
+    QString script = QString("ros2 launch cpp_launch system_launch.py " 
                              "show_image:=%1 "
                              "x_offset:=%2 "
                              "y_offset:=%3 "
@@ -172,7 +150,7 @@ void MainWindow::onStopClicked()
     
     // 3. 调用封装好的清理函数
     // 包含了对所有节点的强杀和内存清理
-    forceCleanUp();
+    forceCleanUp(true); 
 
     // 4. 恢复界面状态
     btn_start->setEnabled(true);

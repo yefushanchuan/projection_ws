@@ -10,8 +10,8 @@ RosWorker::RosWorker(QObject *parent)
     // 客户端 A: 控制 XYZ 偏移 (C++节点: transform_node)
     client_transform_ = std::make_shared<rclcpp::AsyncParametersClient>(node_, "transform_node");
     
-    // 客户端 B: 控制是否显示图像 (Python节点: yolo_detect_node)
-    client_detect_ = std::make_shared<rclcpp::AsyncParametersClient>(node_, "yolo_detect_node");
+    // 客户端 B: 控制是否显示图像 (yolo_seg_node / yolo_detect_node)
+    client_inference_ = std::make_shared<rclcpp::AsyncParametersClient>(node_, "inference_node");
 }
 
 RosWorker::~RosWorker()
@@ -31,15 +31,15 @@ void RosWorker::setParam(const std::string &name, double value)
     // 场景 1: 控制 show_image (布尔值)
     // ==========================================
     if (name == "show_image") {
-        if (!client_detect_->service_is_ready()) {
-            RCLCPP_WARN(node_->get_logger(), "Detect node not ready for show_image");
+        if (!client_inference_->service_is_ready()) {
+            RCLCPP_WARN(node_->get_logger(), "Inference node not ready for show_image");
             return;
         }
 
         // 逻辑转换：Qt传递过来的是 1.0 或 0.0，转为 bool
         bool bool_val = (value > 0.5);
 
-        client_detect_->set_parameters({rclcpp::Parameter("show_image", bool_val)});
+        client_inference_->set_parameters({rclcpp::Parameter("show_image", bool_val)});
     }
     
     // ==========================================

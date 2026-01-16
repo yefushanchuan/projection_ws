@@ -19,7 +19,7 @@ public:
 private:
     rclcpp::Node::SharedPtr node_;
     rclcpp::AsyncParametersClient::SharedPtr client_transform_; // 用于 offset
-    rclcpp::AsyncParametersClient::SharedPtr client_detect_;    // 用于 show_image
+    rclcpp::AsyncParametersClient::SharedPtr client_inference_;    // 用于 show_image
 };
 
 #endif // ROSWORKER_H

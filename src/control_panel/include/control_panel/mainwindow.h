@@ -40,7 +40,7 @@ private slots:
 private:
     void setupUi();
     
-    void forceCleanUp(); 
+    void forceCleanUp(bool is_blocking = true);
 
     QProcess *launch_process;
     RosWorker *ros_worker;
