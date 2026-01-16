@@ -305,7 +305,7 @@ void BPU_Segment::detect_result(cv::Mat& img,
         if (window_created_) {
             // 只有当窗口确实存在时才去销毁
             try {
-                cv::destroyWindow("YOLO Seg Visualization");
+                cv::destroyWindow("Segment Result");
             } catch (...) {}
             window_created_ = false;
             cv::waitKey(1);
@@ -325,7 +325,7 @@ void BPU_Segment::detect_result(cv::Mat& img,
                 cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
 
     // 4. 显示窗口 (全屏逻辑)
-    std::string win_name = "YOLO Seg Visualization";
+    std::string win_name = "Segment Result";
     try {
         // 检查窗口是否存在 (鲁棒性处理)
         if (!window_created_ || cv::getWindowProperty(win_name, cv::WND_PROP_VISIBLE) < 1.0) {
