@@ -10,7 +10,7 @@ public:
   {
     point_broadcaster_ = this->create_publisher<geometry_msgs::msg::PointStamped>("point", 10);
     point_sub_ = this->create_subscription<geometry_msgs::msg::PointStamped>(
-      "/target_depth", 10,
+      "target_depth", 10,
       std::bind(&PointTfBroadcaster::point_callback, this, std::placeholders::_1));
   }
 private:
