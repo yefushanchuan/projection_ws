@@ -131,7 +131,7 @@ class YoloDetectNode(Node):
             self.detector.detect(cv_image, show_img=show_img)
 
             # 5. 结合深度信息发布 3D 坐标
-            if hasattr(self.detector, 'centers') and len(self.detector.centers) > 0:
+            if self.publisher_.get_subscription_count() > 0 and hasattr(self.detector, 'centers') and len(self.detector.centers) > 0:
                 # 只有当深度图准备好时才计算
                 if self.depth_image is None:
                     # 避免在启动初期疯狂打印 warning，可以使用 debug
