@@ -326,16 +326,25 @@ void BPU_Segment::detect_result(cv::Mat& img,
 
     // 4. 显示窗口 (全屏逻辑)
     std::string win_name = "Segment Result";
+    bool need_create = false;
     try {
-        // 检查窗口是否存在 (鲁棒性处理)
         if (!window_created_ || cv::getWindowProperty(win_name, cv::WND_PROP_VISIBLE) < 1.0) {
-            cv::namedWindow(win_name, cv::WINDOW_NORMAL);
-            cv::setWindowProperty(win_name, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
-            window_created_ = true;
+            need_create = true;
         }
     } catch(...) {
+        need_create = true;
+    }
+
+    if (need_create) {
         cv::namedWindow(win_name, cv::WINDOW_NORMAL);
         window_created_ = true;
+        
+        force_top_counter_ = 10;
+    }
+
+    if (force_top_counter_ > 0) {
+        cv::setWindowProperty(win_name, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
+        force_top_counter_--;
     }
     
     cv::imshow(win_name, img);

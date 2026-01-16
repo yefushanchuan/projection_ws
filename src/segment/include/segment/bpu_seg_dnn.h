@@ -36,6 +36,7 @@ public:
 
 private:
     bool window_created_ = false;
+    int force_top_counter_ = 0; 
 
     // === 关键：用于坐标还原的成员变量 ===
     float ratio_ = 1.0f;
