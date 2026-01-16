@@ -13,7 +13,9 @@ struct SegResult {
     float score;
     cv::Rect box;
     std::string class_name;
-    cv::Mat mask; 
+    cv::Mat mask;
+    cv::Point2f mic_center;
+    float mic_radius;
 };
 
 // 传递给 PostProcess 的自定义数据包
