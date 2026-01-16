@@ -171,37 +171,67 @@ void BPU_Segment::PostProcess(const std::vector<std::shared_ptr<hobot::dnn_node:
         res.score = confidences[idx];
         res.class_name = (res.id < (int)config_.class_names.size()) ? config_.class_names[res.id] : "unknown";
 
-        // === 坐标还原 (核心逻辑：减 Pad，除 Ratio) ===
-        float bx1 = (boxes[idx].x - pad_w_) / ratio_;
-        float by1 = (boxes[idx].y - pad_h_) / ratio_;
-        float bx2 = (boxes[idx].br().x - pad_w_) / ratio_;
-        float by2 = (boxes[idx].br().y - pad_h_) / ratio_;
+        // === 1. 获取模型尺度下的 Box (含 Padding) ===
+        // 这里的 boxes[idx] 是基于 640x640 的坐标
+        cv::Rect model_box = boxes[idx];
+        
+        // 边界保护：防止 box 超出模型输入范围
+        model_box = model_box & cv::Rect(0, 0, model_w, model_h);
+        if (model_box.area() <= 0) continue;
+
+        // === 2. 还原最终坐标 (用于显示) ===
+        // 公式：(x - pad) / ratio
+        float bx1 = (model_box.x - pad_w_) / ratio_;
+        float by1 = (model_box.y - pad_h_) / ratio_;
+        float bx2 = (model_box.br().x - pad_w_) / ratio_;
+        float by2 = (model_box.br().y - pad_h_) / ratio_;
         res.box = cv::Rect(cv::Point(bx1, by1), cv::Point(bx2, by2));
 
-        // === Mask 计算与还原 ===
+        // === 3. Mask 计算与裁切 (核心优化) ===
         cv::Mat coeff_mat(1, proto_c, CV_32F, mask_coeffs[idx].data());
-        cv::Mat mask_raw = proto_mat * coeff_mat.t();
-        mask_raw = mask_raw.reshape(1, proto_h);
+        cv::Mat mask_raw = proto_mat * coeff_mat.t(); // (160x160) x 1
+        mask_raw = mask_raw.reshape(1, proto_h);      // 160x160
         cv::exp(-mask_raw, mask_raw);
         mask_raw = 1.0 / (1.0 + mask_raw); // Sigmoid
 
         // Resize 到模型输入尺寸 (640x640)
-        cv::Mat mask_model_size;
-        cv::resize(mask_raw, mask_model_size, cv::Size(model_w, model_h));
+        // 优化：其实可以不resize全图，但为了对齐精度，通常先resize再crop
+        cv::Mat mask_model_full;
+        cv::resize(mask_raw, mask_model_full, cv::Size(model_w, model_h)); // 这里可以用 INTER_LINEAR
 
-        // Crop: 去除 Padding 区域
-        int valid_w = model_w - 2 * pad_w_;
-        int valid_h = model_h - 2 * pad_h_;
-        cv::Rect valid_roi(pad_w_, pad_h_, valid_w, valid_h);
-        
-        // 边界保护
-        valid_roi = valid_roi & cv::Rect(0, 0, model_w, model_h);
-        if (valid_roi.area() <= 0) continue;
+        // **核心：直接裁切出 ROI Mask**
+        // res.mask 现在只包含该物体的小方块区域
+        res.mask = mask_model_full(model_box).clone();
 
-        cv::Mat mask_cropped = mask_model_size(valid_roi).clone();
+        // === 4. 计算最大内切圆 (MIC) ===
+        // 因为 res.mask 已经是 ROI 了，直接算即可，速度很快
+        if (!res.mask.empty()) {
+            // 二值化处理，确保计算距离变换准确
+            cv::Mat mask_bin;
+            // 注意：mask_model_full 是 float 0~1，这里阈值设 0.5
+            cv::threshold(res.mask, mask_bin, 0.5, 1.0, cv::THRESH_BINARY);
+            mask_bin.convertTo(mask_bin, CV_8UC1);
 
-        res.mask = mask_cropped; 
-        
+            cv::Mat dist_map;
+            cv::distanceTransform(mask_bin, dist_map, cv::DIST_L2, cv::DIST_MASK_PRECISE);
+            
+            double max_val;
+            cv::Point max_loc; // 这是相对于 ROI (model_box) 左上角的坐标
+            cv::minMaxLoc(dist_map, nullptr, &max_val, nullptr, &max_loc);
+
+            // 还原 Radius 到原图尺度
+            res.mic_radius = (float)max_val / ratio_;
+
+            // 还原 Center 到原图尺度
+            // 逻辑：(ROI左上角 + ROI内部偏移 - Padding) / ratio
+            float center_x = (model_box.x + max_loc.x - pad_w_) / ratio_;
+            float center_y = (model_box.y + max_loc.y - pad_h_) / ratio_;
+            res.mic_center = cv::Point2f(center_x, center_y);
+        } else {
+            res.mic_radius = 0;
+            res.mic_center = cv::Point2f(0, 0);
+        }
+
         results.push_back(res);
     }
 }
@@ -216,40 +246,39 @@ cv::Scalar BPU_Segment::GetColor(int id) {
 void BPU_Segment::draw_detection(cv::Mat& img, const SegResult& res) {
     cv::Scalar color = GetColor(res.id);
 
-    // 1. 绘制 Mask
+    // === 1. 绘制 Mask (优化版) ===
     if (!res.mask.empty()) {
-        cv::Mat mask_final;
-        // 使用线性插值会让边缘平滑一点，不想平滑可用 INTER_NEAREST
-        cv::resize(res.mask, mask_final, img.size(), 0, 0, cv::INTER_LINEAR);
+        // 安全检查：防止 res.box 超出图像边界
+        cv::Rect valid_box = res.box & cv::Rect(0, 0, img.cols, img.rows);
         
-        // =========================================================
-        // !!! 修复核心：只保留检测框内部的 Mask !!!
-        // =========================================================
-        
-        // 1. 生成二值化 Mask (阈值 0.5)
-        cv::Mat mask_bin = mask_final > 0.5;
+        if (valid_box.area() > 0) {
+            // 此时 res.mask 是 float 类型的 ROI 小图
+            cv::Mat mask_roi_resized;
+            
+            // 将 ROI Mask 缩放到最终检测框的大小
+            // 注意：如果 valid_box 比 res.box 小（即框在图像边缘），需要相应裁剪 mask
+            // 为了简单，这里假设绝大多数情况 box 都在图内，或者简单的缩放:
+            cv::resize(res.mask, mask_roi_resized, res.box.size());
 
-        // 2. 创建一个全黑的容器
-        cv::Mat mask_clipped = cv::Mat::zeros(img.size(), CV_8UC1);
+            // 处理边缘情况：如果 box 被图像边缘截断，我们需要截断 mask
+            int x_offset = valid_box.x - res.box.x;
+            int y_offset = valid_box.y - res.box.y;
+            cv::Rect mask_crop_rect(x_offset, y_offset, valid_box.width, valid_box.height);
+            mask_roi_resized = mask_roi_resized(mask_crop_rect);
 
-        // 3. 计算安全的 ROI (防止框超出图像边界导致崩溃)
-        cv::Rect safe_box = res.box & cv::Rect(0, 0, img.cols, img.rows);
+            // 二值化
+            cv::Mat mask_bin = mask_roi_resized > 0.5;
 
-        // 4. 只将 safe_box 区域内的 mask_bin 拷贝到 mask_clipped
-        if (safe_box.area() > 0) {
-            mask_bin(safe_box).copyTo(mask_clipped(safe_box));
+            // 混合颜色 (只在 valid_box 区域操作，速度极快)
+            cv::Mat img_roi = img(valid_box);
+            cv::Mat color_layer(img_roi.size(), CV_8UC3, color);
+            
+            // 使用 mask_bin 作为掩码进行混合
+            // img_roi = img_roi * 0.6 + color * 0.4
+            cv::Mat temp;
+            cv::addWeighted(img_roi, 0.6, color_layer, 0.4, 0.0, temp);
+            temp.copyTo(img_roi, mask_bin);
         }
-
-        // =========================================================
-
-        // 5. 混合颜色 (使用经过裁剪的 mask_clipped)
-        cv::Mat roi;
-        cv::Mat color_mask(img.size(), CV_8UC3, color);
-        
-        // 只在 mask_clipped 为白色的地方进行混合
-        img.copyTo(roi, mask_clipped);
-        cv::addWeighted(roi, 0.6, color_mask, 0.4, 0.0, roi);
-        roi.copyTo(img, mask_clipped);
     }
 
     // 2. 绘制 Box
