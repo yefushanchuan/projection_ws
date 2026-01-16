@@ -10,12 +10,10 @@ public:
   ImageViewerSubscriber() : Node("image_viewer_listener")
   {
     // QOS 设置
-    rclcpp::QoS qos_profile(1); 
-    qos_profile.reliability(rclcpp::ReliabilityPolicy::Reliable);
-    qos_profile.history(rclcpp::HistoryPolicy::KeepLast);
-        
+    auto qos = rclcpp::SensorDataQoS().keep_last(1);
+
     subscription_ = this->create_subscription<sensor_msgs::msg::Image>(
-      "projection_image_topic", qos_profile,
+      "projection_image_topic", qos,
       std::bind(&ImageViewerSubscriber::image_callback, this, std::placeholders::_1));
       
     // 初始化窗口

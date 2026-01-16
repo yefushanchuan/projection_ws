@@ -86,19 +86,17 @@ public:
             std::bind(&YoloSegNode::parameter_callback, this, std::placeholders::_1));
 
         // 4. QoS 设置
-        rclcpp::QoS qos_profile(1); 
-        qos_profile.reliability(rclcpp::ReliabilityPolicy::Reliable);
-        qos_profile.history(rclcpp::HistoryPolicy::KeepLast);
-
+        auto qos = rclcpp::SensorDataQoS().keep_last(1);
+        
         sub_color_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "/camera/realsense_d435i/color/image_raw", qos_profile,
+            "/camera/realsense_d435i/color/image_raw", qos,
             std::bind(&YoloSegNode::ColorCallback, this, std::placeholders::_1));
         
         sub_depth_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "/camera/realsense_d435i/aligned_depth_to_color/image_raw", qos_profile,
+            "/camera/realsense_d435i/aligned_depth_to_color/image_raw", qos,
             std::bind(&YoloSegNode::DepthCallback, this, std::placeholders::_1));
 
-        pub_ = this->create_publisher<object3d_msgs::msg::Object3DArray>("target_points_array", qos_profile);
+        pub_ = this->create_publisher<object3d_msgs::msg::Object3DArray>("target_points_array", qos);
 
         last_calc_time_ = std::chrono::steady_clock::now();
         last_log_time_ = std::chrono::steady_clock::now();

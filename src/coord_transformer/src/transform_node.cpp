@@ -27,21 +27,19 @@ public:
             std::bind(&CoordTransformNode::parameters_callback, this, std::placeholders::_1));
 
         // QOS 设置
-        rclcpp::QoS qos_profile(1); 
-        qos_profile.reliability(rclcpp::ReliabilityPolicy::Reliable);
-        qos_profile.history(rclcpp::HistoryPolicy::KeepLast);
+        auto qos = rclcpp::SensorDataQoS().keep_last(1);
 
         // 订阅原始坐标
         subscription_ = this->create_subscription<object3d_msgs::msg::Object3DArray>(
             "target_points_array",
-            qos_profile,
+            qos,
             std::bind(&CoordTransformNode::array_callback, this, std::placeholders::_1)
         );
         
         // 发布转换后的坐标
         publisher_ = this->create_publisher<object3d_msgs::msg::Object3DArray>(
             "target_points_projection_array",
-            qos_profile
+            qos
         );
         
         RCLCPP_INFO(this->get_logger(), "CoordTransformNode started. Initial Offsets: X=%.2f, Y=%.2f, Z=%.2f", 

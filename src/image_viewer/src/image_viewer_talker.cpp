@@ -33,16 +33,14 @@ public:
     projection_height_ = this->get_parameter("projection_height").as_int();
 
     // QOS 设置
-    rclcpp::QoS qos_profile(1); 
-    qos_profile.reliability(rclcpp::ReliabilityPolicy::Reliable);
-    qos_profile.history(rclcpp::HistoryPolicy::KeepLast);
-    
+    auto qos = rclcpp::SensorDataQoS().keep_last(1);
+
     // 发布生成的黑底打点图
-    image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("projection_image_topic", qos_profile);
-    
+    image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("projection_image_topic", qos);
+
     // 订阅经过坐标转换后的 3D 点
     points_sub_  = this->create_subscription<object3d_msgs::msg::Object3DArray>(
-      "target_points_projection_array", qos_profile,
+      "target_points_projection_array", qos,
       std::bind(&ImageViewerTalker::points_callback, this, std::placeholders::_1)
     );
 
