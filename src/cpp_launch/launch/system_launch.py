@@ -152,14 +152,6 @@ def generate_launch_description():
                 name='image_viewer_talker',
                 output='screen'
             ),
-
-            # (D) Image Viewer Listener
-            Node(
-                package='image_viewer',
-                executable='image_viewer_listener',
-                name='image_viewer_listener',
-                output='screen'
-            ),
         ]
     )
 

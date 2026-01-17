@@ -53,7 +53,6 @@ MainWindow::~MainWindow() {
 void MainWindow::forceCleanUp(bool is_blocking) {
     QString cleanupCmd = 
         "("
-        "killall -9 image_viewer_listener; "
         "killall -9 image_viewer_talker; "
         "killall -9 transform_node; "
         "killall -9 realsense2_camera_node; "

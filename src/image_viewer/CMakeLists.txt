@@ -14,7 +14,6 @@ find_package(OpenCV REQUIRED)
 find_package(object3d_msgs REQUIRED)
 
 add_executable(image_viewer_talker src/image_viewer_talker.cpp)
-add_executable(image_viewer_listener src/image_viewer_listener.cpp)
 
 target_include_directories(image_viewer_talker PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -27,18 +26,10 @@ ament_target_dependencies(
   "sensor_msgs"
   "object3d_msgs"
 )
-ament_target_dependencies(
-  image_viewer_listener
-  "rclcpp"
-  "cv_bridge"
-  "sensor_msgs"
-  "object3d_msgs"
-)
+
 target_link_libraries(image_viewer_talker ${OpenCV_LIBS})
-target_link_libraries(image_viewer_listener ${OpenCV_LIBS})
 
 install(TARGETS image_viewer_talker
-image_viewer_listener
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
