@@ -117,11 +117,6 @@ private:
 
       // 调用 wmctrl -a 激活窗口到最前
       std::string cmd = "wmctrl -a \"" + window_name_ + "\"";
-      if (std::system(cmd.c_str()) != 0) {
-          RCLCPP_WARN(this->get_logger(), "wmctrl command failed. (Is wmctrl installed?)");
-      } else {
-          RCLCPP_INFO(this->get_logger(), "Window activated.");
-      }
 
       window_initialized_ = true;
   }
