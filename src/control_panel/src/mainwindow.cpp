@@ -51,29 +51,44 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::forceCleanUp(bool is_blocking) {
-    QString cleanupCmd = 
-        "("
-        "killall -9 image_viewer_talker; "
-        "killall -9 transform_node; "
-        "killall -9 realsense2_camera_node; "
-        "pkill -9 -f yolo_detect_node; " 
-        "pkill -9 -f yolo_seg_node; "     
-        "pkill -9 -f inference_node; "    
-        "pkill -9 -f system_launch.py; "
-        "pkill -9 -f component_container; " 
-        "rm -f /dev/shm/fastrtps_*; "
-        "rm -f /dev/shm/sem.fastrtps_*; "
-        "ros2 daemon stop"
-        ") 2>/dev/null";
+    QString cmd = 
+        "ps aux | grep -E '"
+        // 1. 匹配 Launch 脚本
+        "system_launch.py|"
+        // 2. 匹配 Realsense 相机二进制文件
+        "realsense2_camera_node|"
+        // 3. 匹配 YOLO Detect (Python脚本路径包含此名字，精准匹配)
+        "yolo_detect_node|"
+        // 4. 匹配 YOLO Segment 二进制
+        "yolo_seg_node|"
+        // 5. 匹配 坐标转换节点
+        "transform_node|"
+        // 6. 匹配 图像显示节点
+        "image_viewer_talker|"
+        // 7. 匹配 ROS2 守护进程
+        "ros2-daemon"
+        "' "
+        "| grep -v grep "
+        "| grep -v control_panel "
+        "| grep -v vscode "
+        "| awk '{print $2}' "
+        "| xargs -r kill -9";
 
+    // 补充清理：窗口和共享内存
+    QString extraCmd = 
+        "; "
+        "wmctrl -F -c 'Segment Result'; " 
+        "wmctrl -F -c 'Detection Result'; "
+        "wmctrl -F -c 'projection Image'; "
+        "rm -f /dev/shm/fastrtps_*; "
+        "rm -f /dev/shm/sem.fastrtps_*; ";
+
+    QString fullCmd = "(" + cmd + extraCmd + ") > /dev/null 2>&1";
+    
     if (is_blocking) {
-        // 场景 A：点击停止按钮。
-        // 必须死等清理完，防止用户手快立刻点启动。
-        QProcess::execute("bash", QStringList() << "-c" << cleanupCmd);
+        std::system(fullCmd.toStdString().c_str());
     } else {
-        // 场景 B：关闭窗口/析构。
-        // 启动一个后台幽灵进程去清理，主程序立刻退出，不要卡顿。
-        QProcess::startDetached("bash", QStringList() << "-c" << cleanupCmd);
+        QProcess::startDetached("bash", QStringList() << "-c" << fullCmd);
     }
 }
 

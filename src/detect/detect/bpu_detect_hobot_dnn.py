@@ -264,23 +264,25 @@ class BPU_Detect:
         
         # 5. 显示逻辑 (增强鲁棒性版)
         if show_img:
-            # 检查窗口是否真的存在 (防止 self.window_created 状态不同步)
-            # WND_PROP_VISIBLE 在某些 backend 上可能不可用，但通常用来检测窗口是否存在
-            try:
-                is_win_visible = cv2.getWindowProperty("Detection Result", cv2.WND_PROP_VISIBLE)
-            except:
-                is_win_visible = -1
-
-            # 如果标记为未创建，或者检测到窗口实际上已经不在了（被用户点X关闭）
-            if not self.window_created or is_win_visible < 1.0:
-                cv2.namedWindow("Detection Result", cv2.WINDOW_NORMAL)
-                cv2.setWindowProperty("Detection Result", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-                self.window_created = True
-
-            cv2.imshow("Detection Result", draw_img)
+            win_name = "Detection Result"
             
-            # 【关键修改】稍微增加等待时间，从 1ms 改为 10ms
-            # 这有助于在窗口刚创建时处理积压的 GUI 事件
+            if not self.window_created:
+                # 第一次：创建全屏窗口
+                cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+                cv2.setWindowProperty(win_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                self.window_created = True
+            else:
+                # 后续：检查窗口是否还活着
+                try:
+                    prop = cv2.getWindowProperty(win_name, cv2.WND_PROP_VISIBLE)
+                    if prop < 1.0:
+                        # 窗口被外部关闭了，停止 imshow，防止复活
+                        return
+                except:
+                    return
+
+            # 只有活著才刷新
+            cv2.imshow(win_name, draw_img)
             cv2.waitKey(10)
   
     def detect(self, img, show_img=True):

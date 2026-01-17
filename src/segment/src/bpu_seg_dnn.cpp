@@ -31,6 +31,12 @@ BPU_Segment::BPU_Segment() {
     config_.class_num = config_.class_names.size();
 }
 
+BPU_Segment::~BPU_Segment() {
+    if (window_created_) {
+        cv::destroyAllWindows(); // 退出时强制关闭所有 OpenCV 窗口
+    }
+}
+
 void BPU_Segment::BGRToNV12(const cv::Mat& bgr, cv::Mat& nv12) {
     int w = bgr.cols;
     int h = bgr.rows;
@@ -326,19 +332,29 @@ void BPU_Segment::detect_result(cv::Mat& img,
 
     // 4. 显示窗口 (全屏逻辑)
     std::string win_name = "Segment Result";
-    try {
-        // 检查窗口是否存在 (鲁棒性处理)
-        if (!window_created_ || cv::getWindowProperty(win_name, cv::WND_PROP_VISIBLE) < 1.0) {
+    if (!window_created_) {
+        // 情况 A: 第一次启动，创建全屏窗口
+        try {
             cv::namedWindow(win_name, cv::WINDOW_NORMAL);
             cv::setWindowProperty(win_name, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
             window_created_ = true;
+        } catch(...) {}
+    } else {
+        // 情况 B: 窗口应该已经存在。检查它是否被“谋杀”了。
+        // 如果我们认为窗口存在(window_created_=true)，但系统返回不可见(<1.0)
+        // 说明 Qt 执行了 wmctrl -c，或者用户点了关闭。
+        // 此时【千万不要】调用 imshow，否则窗口会复活成非全屏的普通窗口。
+        try {
+            if (cv::getWindowProperty(win_name, cv::WND_PROP_VISIBLE) < 1.0) {
+                // 检测到窗口已关闭，停止渲染，直接退出函数
+                return; 
+            }
+        } catch (...) {
+            return;
         }
-    } catch(...) {
-        cv::namedWindow(win_name, cv::WINDOW_NORMAL);
-        window_created_ = true;
     }
-    
+        
+    // 4. 只有窗口健在时，才更新图像
     cv::imshow(win_name, img);
-    // 增加一点延时，给 GUI 刷新机会，与 Python 的 waitKey(10) 类似
     cv::waitKey(10); 
 }

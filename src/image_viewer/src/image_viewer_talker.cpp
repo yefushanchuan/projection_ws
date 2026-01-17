@@ -82,6 +82,21 @@ private:
     // 2. 懒加载：如果是第一次收到数据，才创建窗口
     if (!window_initialized_) {
         init_window_once();
+    } 
+    else {
+        if (check_count_ > 30) {
+            try {
+                // 如果窗口被 Qt 强制关闭了 (VISIBLE < 1.0)，则停止刷新
+                if (cv::getWindowProperty(window_name_, cv::WND_PROP_VISIBLE) < 1.0) {
+                    return; // 此时返回是安全的，因为窗口确实已经没了
+                }
+            } catch (...) {
+                return;
+            }
+        } else {
+            // 保护期计数
+            check_count_++;
+        }
     }
 
     // 3. 显示当前帧
@@ -113,10 +128,13 @@ private:
       // 这里我们可以直接显示一张临时的黑底或直接利用 callback 里即将显示的图
       // 为了稳妥，先显示个黑底占位，紧接着 callback 后面会刷上真正的图
       cv::imshow(window_name_, cv::Mat::zeros(projection_height_, projection_width_, CV_8UC3));
-      cv::waitKey(50); // 给系统一点时间注册窗口
+      cv::waitKey(200); // 给系统一点时间注册窗口
 
-      // 调用 wmctrl -a 激活窗口到最前
-      std::string cmd = "wmctrl -a \"" + window_name_ + "\"";
+      std::string cmd_fullscreen = "wmctrl -r \"" + window_name_ + "\" -b add,fullscreen";
+      std::system(cmd_fullscreen.c_str());
+
+      std::string cmd_focus = "wmctrl -a \"" + window_name_ + "\"";
+      std::system(cmd_focus.c_str()); 
 
       window_initialized_ = true;
   }
@@ -130,7 +148,8 @@ private:
   int projection_width_, projection_height_;
   
   std::string window_name_;
-  bool window_initialized_; // 新增：窗口初始化状态标志
+  bool window_initialized_;
+  int check_count_;
 };
 
 int main(int argc, char * argv[])

@@ -19,7 +19,7 @@ struct Config {
 class BPU_Segment {
 public:
     BPU_Segment();
-    ~BPU_Segment() = default;
+    ~BPU_Segment();
 
     Config config_;
 

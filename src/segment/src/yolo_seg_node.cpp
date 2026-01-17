@@ -99,7 +99,7 @@ public:
         pub_ = this->create_publisher<object3d_msgs::msg::Object3DArray>("target_points_array", qos);
 
         infer_timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(160),   // 10 Hz（你可调）
+            std::chrono::milliseconds(160),
             std::bind(&YoloSegNode::InferTimerCallback, this)
         );
 
@@ -107,6 +107,10 @@ public:
         last_log_time_ = std::chrono::steady_clock::now();
     }
 
+    ~YoloSegNode() override {
+    cv::destroyAllWindows(); 
+    }
+    
 protected:
     int SetNodePara() override {
         if (!dnn_node_para_ptr_) return -1;
@@ -315,33 +319,34 @@ private:
             RCLCPP_ERROR(this->get_logger(), "Depth cv_bridge error: %s", e.what());
         }
     }
-        void InferTimerCallback() {
-            if (!color_ready_) return;
 
-            cv::Mat img = latest_color_img_.clone();
-            auto header = latest_color_header_;
+    void InferTimerCallback() {
+        if (!color_ready_) return;
 
-            // 1. PreProcess
-            cv::Mat nv12_mat;
-            segmenter_->PreProcess(img, model_input_w_, model_input_h_, nv12_mat);
+        cv::Mat img = latest_color_img_.clone();
+        auto header = latest_color_header_;
 
-            // 2. 构造输入
-            auto pyramid = hobot::dnn_node::ImageProc::GetNV12PyramidFromNV12Img(
-                reinterpret_cast<const char*>(nv12_mat.data),
-                model_input_h_, model_input_w_,
-                model_input_h_, model_input_w_
-            );
+        // 1. PreProcess
+        cv::Mat nv12_mat;
+        segmenter_->PreProcess(img, model_input_w_, model_input_h_, nv12_mat);
 
-            auto inputs = std::vector<std::shared_ptr<DNNInput>>{pyramid};
+        // 2. 构造输入
+        auto pyramid = hobot::dnn_node::ImageProc::GetNV12PyramidFromNV12Img(
+            reinterpret_cast<const char*>(nv12_mat.data),
+            model_input_h_, model_input_w_,
+            model_input_h_, model_input_w_
+        );
 
-            // 3. 输出容器
-            auto output = std::make_shared<YoloOutput>();
-            output->msg_header = header;
-            output->src_img = std::make_shared<cv::Mat>(img);
+        auto inputs = std::vector<std::shared_ptr<DNNInput>>{pyramid};
 
-            // 4. Run（终于在“安全线程”里跑了）
-            Run(inputs, output, nullptr, false);
-}
+        // 3. 输出容器
+        auto output = std::make_shared<YoloOutput>();
+        output->msg_header = header;
+        output->src_img = std::make_shared<cv::Mat>(img);
+
+        // 4. Run（终于在“安全线程”里跑了）
+        Run(inputs, output, nullptr, false);
+    }
 
 };
 
