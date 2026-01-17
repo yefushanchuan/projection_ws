@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include "dnn_node/dnn_node_data.h"
+#include "std_msgs/msg/header.hpp" 
 
 // 检测与分割结果
 struct SegResult {
@@ -19,8 +20,10 @@ struct SegResult {
 };
 
 // 传递给 PostProcess 的自定义数据包
-struct YoloOutput : public hobot::dnn_node::DnnNodeOutput {
-    std::shared_ptr<cv::Mat> src_img; // 携带原始 BGR 图像用于画图
+struct YoloSegOutput : public hobot::dnn_node::DnnNodeOutput {
+    std::shared_ptr<std_msgs::msg::Header> msg_header;
+    std::shared_ptr<cv::Mat> src_img;
+    std::shared_ptr<cv::Mat> depth_img;
 };
 
 #endif // YOLO_SEG_COMMON_H

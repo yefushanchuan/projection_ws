@@ -10,6 +10,8 @@ from detect.bpu_detect_hobot_dnn import BPU_Detect
 from rcl_interfaces.msg import SetParametersResult 
 from object3d_msgs.msg import Object3D, Object3DArray
 from rclpy.qos import qos_profile_sensor_data
+import numpy as np
+import message_filters
 
 class YoloDetectNode(Node):
     def __init__(self):
@@ -35,8 +37,15 @@ class YoloDetectNode(Node):
         model_filename = self.get_parameter('model_filename').get_parameter_value().string_value
 
         # 3. 初始化通信
-        self.create_subscription(Image, '/camera/realsense_d435i/color/image_raw', self.listener_callback, qos_profile_sensor_data)
-        self.create_subscription(Image, '/camera/realsense_d435i/aligned_depth_to_color/image_raw', self.depth_callback, qos_profile_sensor_data)
+        self.color_sub = message_filters.Subscriber(self, Image, '/camera/realsense_d435i/color/image_raw', qos_profile=qos_profile_sensor_data)
+        self.depth_sub = message_filters.Subscriber(self, Image, '/camera/realsense_d435i/aligned_depth_to_color/image_raw', qos_profile=qos_profile_sensor_data)
+
+        # ApproximateTimeSynchronizer: 
+        # 参数2: queue_size=50 (缓冲队列长度)
+        # 参数3: slop=0.2 (允许 200ms 的时间误差，RealSense通常在30ms以内)
+        self.ts = message_filters.ApproximateTimeSynchronizer([self.color_sub, self.depth_sub], 50, 0.2)
+        self.ts.registerCallback(self.sync_callback)
+
         self.publisher_ = self.create_publisher(Object3DArray, 'target_points_array', qos_profile_sensor_data)
         
         self.bridge = CvBridge()
@@ -44,7 +53,6 @@ class YoloDetectNode(Node):
 
         self.latest_color_msg = None
         self.latest_depth_msg = None
-        self.timer = self.create_timer(0.16, self.infer_callback)
 
         # FPS 计算变量
         self.frame_count = 0
@@ -105,28 +113,39 @@ class YoloDetectNode(Node):
     def depth_callback(self, msg):
         self.latest_depth_msg = msg
 
-    def get_depth_value(self, cx, cy):
-        # 增加健壮性检查：防止坐标越界导致崩溃
-        if self.depth_image is None:
+    def get_robust_depth(self, depth_img, cx, cy):
+        h, w = depth_img.shape
+        cx, cy = int(cx), int(cy)
+        
+        # 1. 定义 5x5 窗口边界 (防止越界)
+        x_min = max(0, cx - 2)
+        x_max = min(w, cx + 3)  # slice 前闭后开
+        y_min = max(0, cy - 2)
+        y_max = min(h, cy + 3)
+        
+        # 2. 切片提取 ROI
+        roi = depth_img[y_min:y_max, x_min:x_max]
+        
+        # 3. 剔除 0 值 (无效深度)
+        valid_pixels = roi[roi > 0]
+        
+        # 4. 如果没有有效值，返回 -1
+        if len(valid_pixels) == 0:
             return -1
-            
-        h, w = self.depth_image.shape
-        if 0 <= cx < w and 0 <= cy < h:
-            val = self.depth_image[cy, cx]
-            return val if val > 0 else -1
-        else:
-            # 只有越界时才打印 debug
-            self.get_logger().debug(f"Coord out of bounds: ({cx}, {cy}) vs Img({w}x{h})")
-            return -1
+                
+        # 5. 计算中值 (Median)
+        median_depth = np.median(valid_pixels)
+        
+        return float(median_depth)
 
-    def infer_callback(self):
-        if self.latest_color_msg is None:
-            return
-
+    def sync_callback(self, msg_color, msg_depth):
         # --- 1. 转图像 ---
-        cv_image = self.bridge.imgmsg_to_cv2(
-            self.latest_color_msg, 'bgr8'
-        )
+        try:
+            cv_image = self.bridge.imgmsg_to_cv2(msg_color, 'bgr8')
+            depth_image = self.bridge.imgmsg_to_cv2(msg_depth, '16UC1')
+        except Exception as e:
+            self.get_logger().error(f"CV Bridge Error: {e}")
+            return
 
         show_img = self.show_image_flag
 
@@ -140,42 +159,31 @@ class YoloDetectNode(Node):
             self.start_time = curr_time
 
         if show_img:
-            cv2.putText(
-                cv_image, f"FPS: {self.fps:.2f}",
-                (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
-                1.0, (0, 255, 0), 2
-            )
+            cv2.putText(cv_image, f"FPS: {self.fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
 
-        # --- 3. 推理 ---
+        # --- 3. 推理 (BPU) ---
+        # 注意：这里会阻塞回调，如果推理太慢且 fps 很高，message_filters 会自动丢弃处理不过来的帧
         self.detector.detect(cv_image, show_img=show_img)
 
-        # --- 4. 没订阅者就别算 3D（省 CPU）---
+        # --- 4. 没订阅者就别算 3D ---
         if self.publisher_.get_subscription_count() == 0:
             return
 
         if not hasattr(self.detector, 'centers') or len(self.detector.centers) == 0:
             return
 
-        if self.latest_depth_msg is None:
-            return
-
-        depth_image = self.bridge.imgmsg_to_cv2(
-            self.latest_depth_msg, '16UC1'
-        )
-
         # --- 5. 计算 3D 并发布 ---
         array_msg = Object3DArray()
-        array_msg.header = self.latest_color_msg.header
+        # 重要：使用同步后，header 应该用谁的？通常 RGB 和 Depth 时间戳近似，用 RGB 的即可
+        array_msg.header = msg_color.header
 
         fx, fy = self.camera_fx, self.camera_fy
         cx_, cy_ = self.camera_cx, self.camera_cy
 
         for i, (cx, cy) in enumerate(self.detector.centers):
-            if not (0 <= int(cx) < depth_image.shape[1] and
-                    0 <= int(cy) < depth_image.shape[0]):
-                continue
-
-            d = depth_image[int(cy), int(cx)]
+            # 调用改进后的深度获取函数
+            d = self.get_robust_depth(depth_image, cx, cy)
+            
             if d <= 0:
                 continue
 
@@ -206,7 +214,6 @@ class YoloDetectNode(Node):
 
         if array_msg.objects:
             self.publisher_.publish(array_msg)
-
         
 def main(args=None):
     rclpy.init(args=args)

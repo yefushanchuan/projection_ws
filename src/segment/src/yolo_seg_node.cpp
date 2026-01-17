@@ -8,6 +8,9 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include "object3d_msgs/msg/object3_d.hpp"
 #include "object3d_msgs/msg/object3_d_array.hpp"
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
 
 #include "segment/yolo_seg_common.h"
 #include "segment/bpu_seg_dnn.h"
@@ -88,20 +91,18 @@ public:
         // 4. QoS 设置
         auto qos = rclcpp::SensorDataQoS().keep_last(1);
         
-        sub_color_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "/camera/realsense_d435i/color/image_raw", qos,
-            std::bind(&YoloSegNode::ColorCallback, this, std::placeholders::_1));
+        sub_color_filter_.subscribe(this, "/camera/realsense_d435i/color/image_raw", qos.get_rmw_qos_profile());
+        sub_depth_filter_.subscribe(this, "/camera/realsense_d435i/aligned_depth_to_color/image_raw", qos.get_rmw_qos_profile());
+
+        // 初始化同步器
+        sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
+            SyncPolicy(50), sub_color_filter_, sub_depth_filter_
+        );
         
-        sub_depth_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "/camera/realsense_d435i/aligned_depth_to_color/image_raw", qos,
-            std::bind(&YoloSegNode::DepthCallback, this, std::placeholders::_1));
+        // 注册同步回调
+        sync_->registerCallback(std::bind(&YoloSegNode::SyncCallback, this, std::placeholders::_1, std::placeholders::_2));
 
         pub_ = this->create_publisher<object3d_msgs::msg::Object3DArray>("target_points_array", qos);
-
-        infer_timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(160),
-            std::bind(&YoloSegNode::InferTimerCallback, this)
-        );
 
         last_calc_time_ = std::chrono::steady_clock::now();
         last_log_time_ = std::chrono::steady_clock::now();
@@ -110,7 +111,51 @@ public:
     ~YoloSegNode() override {
     cv::destroyAllWindows(); 
     }
-    
+        
+    float GetRobustDepth(const cv::Mat& depth_img, int cx, int cy)
+    {
+        if (depth_img.empty()) return -1.0f;
+
+        int h = depth_img.rows;
+        int w = depth_img.cols;
+
+        std::vector<uint16_t> valid_depths;
+        valid_depths.reserve(25); // 5x5 = 25
+
+        // 遍历 5x5 窗口
+        for (int dy = -2; dy <= 2; ++dy) {
+            for (int dx = -2; dx <= 2; ++dx) {
+                int u = cx + dx;
+                int v = cy + dy;
+
+                // 边界检查
+                if (u >= 0 && u < w && v >= 0 && v < h) {
+                    uint16_t d = depth_img.at<uint16_t>(v, u);
+                    // 剔除无效值 0
+                    if (d > 0) {
+                        valid_depths.push_back(d);
+                    }
+                }
+            }
+        }
+
+        if (valid_depths.empty()) {
+            return -1.0f;
+        }
+
+        // 中值滤波（nth_element，O(n)）
+        size_t n = valid_depths.size() / 2;
+        std::nth_element(
+            valid_depths.begin(),
+            valid_depths.begin() + n,
+            valid_depths.end()
+        );
+
+        uint16_t median_val = valid_depths[n];
+
+        return static_cast<float>(median_val) / 1000.0f; // mm -> m
+    }
+
 protected:
     int SetNodePara() override {
         if (!dnn_node_para_ptr_) return -1;
@@ -123,8 +168,8 @@ protected:
     int PostProcess(const std::shared_ptr<DnnNodeOutput>& node_output) override {
         if (!node_output) return -1;
 
-        auto yolo_output = std::dynamic_pointer_cast<YoloOutput>(node_output);
-        if (!yolo_output || !yolo_output->src_img) return -1;
+        auto seg_output = std::dynamic_pointer_cast<YoloSegOutput>(node_output);
+        if (!seg_output || !seg_output->src_img || !seg_output->depth_img) return -1;
 
         UpdateFPS(show_img_);
 
@@ -132,11 +177,11 @@ protected:
         std::vector<SegResult> results;
         segmenter_->PostProcess(node_output->output_tensors, model_input_h_, model_input_w_, results);
 
-        PublishSegMessage(results, yolo_output->msg_header);
+        PublishSegMessage(results, seg_output->msg_header, *(seg_output->depth_img));
 
         // 可视化
         if (show_img_) {
-            cv::Mat draw_img = yolo_output->src_img->clone();
+            cv::Mat draw_img = seg_output->src_img->clone();
             segmenter_->detect_result(draw_img, results, fps_, true);
         } else {
             cv::Mat dummy_img; 
@@ -148,30 +193,21 @@ protected:
 
 private:
     std::string resolved_model_path_; // 存储解析后的模型路径
-
     int model_input_w_;
     int model_input_h_;
-
     bool show_img_; 
     double conf_thres_;
     double nms_thres_;
     double fx_, fy_, cx_, cy_;
 
-    cv::Mat latest_color_img_;
-    std::shared_ptr<std_msgs::msg::Header> latest_color_header_;
-    std::atomic<bool> color_ready_{false};
+    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> SyncPolicy;
+    message_filters::Subscriber<sensor_msgs::msg::Image> sub_color_filter_;
+    message_filters::Subscriber<sensor_msgs::msg::Image> sub_depth_filter_;
+    std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
 
-    rclcpp::TimerBase::SharedPtr infer_timer_;
-    OnSetParametersCallbackHandle::SharedPtr callback_handle_;
-
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_color_;
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_depth_;
     rclcpp::Publisher<object3d_msgs::msg::Object3DArray>::SharedPtr pub_;
-
+    OnSetParametersCallbackHandle::SharedPtr callback_handle_;
     std::shared_ptr<BPU_Segment> segmenter_;
-
-    cv::Mat depth_image_;
-    bool depth_ready_ = false;
 
     std::chrono::steady_clock::time_point last_calc_time_;
     std::chrono::steady_clock::time_point last_log_time_;
@@ -179,60 +215,36 @@ private:
     double fps_ = 0.0;
 
     void PublishSegMessage(const std::vector<SegResult>& results, 
-                           const std::shared_ptr<std_msgs::msg::Header>& header) {
-        // 1. 检查有没有人订阅，省流
-        if (pub_->get_subscription_count() == 0) return;
+                           const std::shared_ptr<std_msgs::msg::Header>& header,
+                           const cv::Mat& depth_mat) {
         
-        // 2. 检查深度图是否就绪
-        if (!depth_ready_ || depth_image_.empty()) {
-            // 可以选择打印一次 debug，避免刷屏
-            // RCLCPP_DEBUG(this->get_logger(), "Depth image not ready yet.");
-            return;
-        }
+        if (pub_->get_subscription_count() == 0) return;
 
         object3d_msgs::msg::Object3DArray msg;
-        msg.header = *header; // 保持时间戳同步
+        msg.header = *header;
 
         for (const auto& res : results) {
-            // 获取内切圆中心坐标 (像素)
             int u = std::round(res.mic_center.x);
             int v = std::round(res.mic_center.y);
 
-            // 越界检查
-            if (u < 0 || u >= depth_image_.cols || v < 0 || v >= depth_image_.rows) continue;
+            float z_m = GetRobustDepth(depth_mat, u, v);
+            
+            // 如果 z_m 返回 -1 (无效) 或者太近/太远，过滤掉
+            if (z_m <= 0.0f) continue; 
 
-            // 获取深度值 (mm -> m)
-            // Realsense 默认是 16UC1，单位毫米
-            uint16_t depth_mm = depth_image_.at<uint16_t>(v, u);
-            if (depth_mm == 0) continue; // 无效深度
-
-            float z_m = static_cast<float>(depth_mm) / 1000.0f;
-
-            // 3D 坐标转换 (像素坐标系 -> 相机坐标系)
-            // X = (u - cx) * Z / fx
-            // Y = (v - cy) * Z / fy
             float x_m = (static_cast<float>(u) - cx_) * z_m / fx_;
             float y_m = (static_cast<float>(v) - cy_) * z_m / fy_;
 
-            // === 核心逻辑优化：半径像素 -> 物理半径 ===
-            // 物理长度 = (像素长度 * Z) / fx
-            // 这里将 mic_radius 作为像素长度，映射到 width_m 和 height_m
-            // 假设物体是圆球，宽和高都是直径 (2 * radius)
-            // 但你的要求是：width_m, height_m 变为 "最大内切圆半径" (物理单位)
-            
             float radius_m = (res.mic_radius * z_m) / fx_;
-
+            
             object3d_msgs::msg::Object3D obj;
             obj.class_name = res.class_name;
             obj.score = res.score;
-            
             obj.point.x = x_m;
             obj.point.y = y_m;
             obj.point.z = z_m;
-
-            // 按照你的要求：传递物理单位的内切圆半径
             obj.width_m = radius_m;
-            obj.height_m = radius_m;
+            obj.height_m = radius_m ;
 
             msg.objects.push_back(obj);
         }
@@ -289,48 +301,26 @@ private:
         }
     }
 
-    void ColorCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
+    void SyncCallback(const sensor_msgs::msg::Image::ConstSharedPtr& msg_color, 
+                      const sensor_msgs::msg::Image::ConstSharedPtr& msg_depth) {
+        // 1. 转换图像
+        cv::Mat img_color, img_depth;
         try {
-            auto cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
-
-            if (cv_ptr->image.cols != 1280 || cv_ptr->image.rows != 720) {
-                cv::resize(cv_ptr->image, latest_color_img_, cv::Size(1280, 720));
-            } else {
-                latest_color_img_ = cv_ptr->image;
-            }
-
-            latest_color_header_ =
-                std::make_shared<std_msgs::msg::Header>(msg->header);
-
-            color_ready_ = true;
-        } catch (const cv_bridge::Exception &e) {
-            RCLCPP_ERROR(this->get_logger(), "Color cv_bridge error: %s", e.what());
-        }
-    }
-
-    void DepthCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
-        try {
-            // 使用 cv_bridge 转换，zero-copy 可能更高效，这里用 toCvCopy 保证安全
-            // TYPE_16UC1 是 Realsense 标准格式
-            cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_16UC1);
-            depth_image_ = cv_ptr->image.clone();
-            depth_ready_ = true;
+            img_color = cv_bridge::toCvShare(msg_color, "bgr8")->image.clone();
+            // Realsense 深度图通常是 16UC1
+            img_depth = cv_bridge::toCvShare(msg_depth, "16UC1")->image.clone();
+            
+            // 如果需要 resize，必须在这里同时对 color 和 depth 进行 resize
+            // 但建议直接在 launch 里设置相机出 640x480，这里就不需要消耗 CPU 做 resize 了
         } catch (cv_bridge::Exception& e) {
-            RCLCPP_ERROR(this->get_logger(), "Depth cv_bridge error: %s", e.what());
+            RCLCPP_ERROR(this->get_logger(), "cv_bridge error: %s", e.what());
+            return;
         }
-    }
 
-    void InferTimerCallback() {
-        if (!color_ready_) return;
-
-        cv::Mat img = latest_color_img_.clone();
-        auto header = latest_color_header_;
-
-        // 1. PreProcess
+        // 2. 准备 DNN 输入 (NV12 转换)
         cv::Mat nv12_mat;
-        segmenter_->PreProcess(img, model_input_w_, model_input_h_, nv12_mat);
+        segmenter_->PreProcess(img_color, model_input_w_, model_input_h_, nv12_mat);
 
-        // 2. 构造输入
         auto pyramid = hobot::dnn_node::ImageProc::GetNV12PyramidFromNV12Img(
             reinterpret_cast<const char*>(nv12_mat.data),
             model_input_h_, model_input_w_,
@@ -339,15 +329,17 @@ private:
 
         auto inputs = std::vector<std::shared_ptr<DNNInput>>{pyramid};
 
-        // 3. 输出容器
-        auto output = std::make_shared<YoloOutput>();
-        output->msg_header = header;
-        output->src_img = std::make_shared<cv::Mat>(img);
+        // 3. 构造输出结构体 (携带同步好的 Depth)
+        auto output = std::make_shared<YoloSegOutput>();
+        output->msg_header = std::make_shared<std_msgs::msg::Header>(msg_color->header);
+        output->src_img = std::make_shared<cv::Mat>(img_color);
+        output->depth_img = std::make_shared<cv::Mat>(img_depth);
 
-        // 4. Run（终于在“安全线程”里跑了）
+        // 4. 执行推理
+        // 注意：Run 可能会阻塞或者排队，这取决于底层 BPU 调度
+        // 如果输入帧率过高，dnn_node 内部可能会丢帧
         Run(inputs, output, nullptr, false);
     }
-
 };
 
 int main(int argc, char** argv) {

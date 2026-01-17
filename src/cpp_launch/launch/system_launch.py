@@ -44,18 +44,8 @@ def generate_launch_description():
             'enable_sync': 'true',            # 必须：时间同步
             'rgb_camera.color_profile': '1280,720,6', 
             'depth_module.depth_profile': '1280,720,6',
-            
-            # === 3. 滤镜配置 (解决深度图有黑洞/无效点的问题) ===
-            # 【关键】填孔滤镜：强制用邻近像素填充无效的深度值(0)
-            'hole_filling_filter.enable': 'true',   
-            
-            # 推荐：空间滤镜 (平滑边缘，减少噪点)
-            'spatial_filter.enable': 'true',        
-            
-            # 推荐：时间滤镜 (减少深度值随时间的抖动，让测距数值更稳)
-            'temporal_filter.enable': 'true',       
-            
-            # === 4. 日志 ===
+
+            # === 3. 日志 ===
             'log_level': 'warn'
         }.items()
     )

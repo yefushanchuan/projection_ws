@@ -14,6 +14,7 @@ find_package(dnn_node REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(object3d_msgs REQUIRED)
+find_package(message_filters REQUIRED)
 
 # 2. TROS/BPU Library Paths
 if(DEFINED ENV{TROS_DISTRO})
@@ -56,6 +57,7 @@ ament_target_dependencies(yolo_seg_node
   "dnn_node"
   "ament_index_cpp"
   "object3d_msgs"
+  "message_filters"
 )
 
 target_link_libraries(yolo_seg_node
