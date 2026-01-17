@@ -41,7 +41,11 @@ class YoloDetectNode(Node):
         
         self.bridge = CvBridge()
         self.depth_image = None
-        
+
+        self.latest_color_msg = None
+        self.latest_depth_msg = None
+        self.timer = self.create_timer(0.16, self.infer_callback)
+
         # FPS 计算变量
         self.frame_count = 0
         self.start_time = time.time()
@@ -96,106 +100,10 @@ class YoloDetectNode(Node):
         return SetParametersResult(successful=True)
 
     def listener_callback(self, msg):
-        try:
-            # 1. 转换图像
-            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-            show_img = self.show_image_flag # 获取当前最新的开关状态
-
-            # 2. FPS 计算
-            self.frame_count += 1
-            curr_time = time.time()
-            elapsed_time = curr_time - self.start_time
-
-            if elapsed_time >= 1.0:
-                self.fps = self.frame_count / elapsed_time
-                self.frame_count = 0
-                self.start_time = curr_time
-                self.fps_log_counter += 1
-                
-                # 优化日志：仅当不显示界面时，每5秒打印一次心跳包
-                if not show_img and (self.fps_log_counter % 5 == 0):
-                    self.get_logger().info(f"Node Running - FPS: {self.fps:.2f}")
-
-            # 3. 绘制 FPS 到图像上
-            if show_img:
-                cv2.putText(cv_image, f"FPS: {self.fps:.2f}", (10, 30), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
-
-            # 4. 执行推理 (内部会处理 show_img 逻辑，包括销毁窗口)
-            self.detector.detect(cv_image, show_img=show_img)
-
-            # 5. 结合深度信息发布 3D 坐标
-            if self.publisher_.get_subscription_count() > 0 and hasattr(self.detector, 'centers') and len(self.detector.centers) > 0:
-                # 只有当深度图准备好时才计算
-                if self.depth_image is None:
-                    # 避免在启动初期疯狂打印 warning，可以使用 debug
-                    self.get_logger().debug("Waiting for depth image...") 
-                    return
-
-                array_msg = Object3DArray()
-                array_msg.header = msg.header
-
-                # 相机内参 (从参数服务器获取最新的)
-                fx, fy = self.camera_fx, self.camera_fy
-                cx_, cy_ = self.camera_cx, self.camera_cy
-
-                for i, (cx, cy) in enumerate(self.detector.centers):
-                    # 获取深度 Z
-                    depth_value = self.get_depth_value(int(cx), int(cy))
-                    
-                    # 过滤无效深度
-                    if depth_value <= 0:
-                        continue
-
-                    # 坐标转换: 像素坐标 (u,v,d) -> 相机坐标 (X,Y,Z)
-                    Z = float(depth_value) / 1000.0 # 毫米转米
-                    X = (float(cx) - cx_) * Z / fx
-                    Y = (float(cy) - cy_) * Z / fy
-
-                    # === 计算物理宽高 ===
-                    bbox = self.detector.bboxes[i] # [x1, y1, x2, y2]
-                    x1, y1, x2, y2 = bbox
-                    w_pixel = x2 - x1
-                    h_pixel = y2 - y1
-
-                    # 物理长度 = (像素长度 * 距离Z) / 焦距
-                    # 宽度对应 fx，高度对应 fy
-                    width_m = (w_pixel * Z) / self.camera_fx
-                    height_m = (h_pixel * Z) / self.camera_fy
-                    # 构建消息
-                    obj_msg = Object3D()
-                    obj_msg.point.x = X
-                    obj_msg.point.y = Y
-                    obj_msg.point.z = Z
-                    obj_msg.width_m = width_m
-                    obj_msg.height_m = height_m
-
-                    # 获取类别和置信度
-                    try:
-                        class_id = int(self.detector.ids[i])
-                        obj_msg.class_name = self.labelname[class_id]
-                        obj_msg.score = float(self.detector.scores[i])
-                    except (IndexError, AttributeError):
-                        obj_msg.class_name = "unknown"
-                        obj_msg.score = 0.0
-
-                    array_msg.objects.append(obj_msg)
-
-                    # Debug 日志：不会刷屏，除非你开启 debug 级别
-                    self.get_logger().debug(f"Det: {obj_msg.class_name} at ({X:.2f}, {Y:.2f}, {Z:.2f})")
-                    
-                if len(array_msg.objects) > 0:
-                    self.publisher_.publish(array_msg)
-
-        except Exception as e:  
-            self.get_logger().error(f"Inference Loop Error: {e}")
+        self.latest_color_msg = msg
 
     def depth_callback(self, msg):
-        try:
-            # 16UC1 是 Realsense 标准深度格式 (单位 mm)
-            self.depth_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1')
-        except Exception as e:
-            self.get_logger().error(f"Depth convert error: {e}")
+        self.latest_depth_msg = msg
 
     def get_depth_value(self, cx, cy):
         # 增加健壮性检查：防止坐标越界导致崩溃
@@ -210,6 +118,95 @@ class YoloDetectNode(Node):
             # 只有越界时才打印 debug
             self.get_logger().debug(f"Coord out of bounds: ({cx}, {cy}) vs Img({w}x{h})")
             return -1
+
+    def infer_callback(self):
+        if self.latest_color_msg is None:
+            return
+
+        # --- 1. 转图像 ---
+        cv_image = self.bridge.imgmsg_to_cv2(
+            self.latest_color_msg, 'bgr8'
+        )
+
+        show_img = self.show_image_flag
+
+        # --- 2. FPS 计算 ---
+        self.frame_count += 1
+        curr_time = time.time()
+        elapsed = curr_time - self.start_time
+        if elapsed >= 1.0:
+            self.fps = self.frame_count / elapsed
+            self.frame_count = 0
+            self.start_time = curr_time
+
+        if show_img:
+            cv2.putText(
+                cv_image, f"FPS: {self.fps:.2f}",
+                (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                1.0, (0, 255, 0), 2
+            )
+
+        # --- 3. 推理 ---
+        self.detector.detect(cv_image, show_img=show_img)
+
+        # --- 4. 没订阅者就别算 3D（省 CPU）---
+        if self.publisher_.get_subscription_count() == 0:
+            return
+
+        if not hasattr(self.detector, 'centers') or len(self.detector.centers) == 0:
+            return
+
+        if self.latest_depth_msg is None:
+            return
+
+        depth_image = self.bridge.imgmsg_to_cv2(
+            self.latest_depth_msg, '16UC1'
+        )
+
+        # --- 5. 计算 3D 并发布 ---
+        array_msg = Object3DArray()
+        array_msg.header = self.latest_color_msg.header
+
+        fx, fy = self.camera_fx, self.camera_fy
+        cx_, cy_ = self.camera_cx, self.camera_cy
+
+        for i, (cx, cy) in enumerate(self.detector.centers):
+            if not (0 <= int(cx) < depth_image.shape[1] and
+                    0 <= int(cy) < depth_image.shape[0]):
+                continue
+
+            d = depth_image[int(cy), int(cx)]
+            if d <= 0:
+                continue
+
+            Z = d / 1000.0
+            X = (cx - cx_) * Z / fx
+            Y = (cy - cy_) * Z / fy
+
+            bbox = self.detector.bboxes[i]
+            w_pixel = bbox[2] - bbox[0]
+            h_pixel = bbox[3] - bbox[1]
+
+            obj = Object3D()
+            obj.point.x = X
+            obj.point.y = Y
+            obj.point.z = Z
+            obj.width_m = (w_pixel * Z) / fx
+            obj.height_m = (h_pixel * Z) / fy
+
+            try:
+                cid = int(self.detector.ids[i])
+                obj.class_name = self.labelname[cid]
+                obj.score = float(self.detector.scores[i])
+            except:
+                obj.class_name = "unknown"
+                obj.score = 0.0
+
+            array_msg.objects.append(obj)
+
+        if array_msg.objects:
+            self.publisher_.publish(array_msg)
+
         
 def main(args=None):
     rclpy.init(args=args)

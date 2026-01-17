@@ -98,6 +98,11 @@ public:
 
         pub_ = this->create_publisher<object3d_msgs::msg::Object3DArray>("target_points_array", qos);
 
+        infer_timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(160),   // 10 Hz（你可调）
+            std::bind(&YoloSegNode::InferTimerCallback, this)
+        );
+
         last_calc_time_ = std::chrono::steady_clock::now();
         last_log_time_ = std::chrono::steady_clock::now();
     }
@@ -148,6 +153,11 @@ private:
     double nms_thres_;
     double fx_, fy_, cx_, cy_;
 
+    cv::Mat latest_color_img_;
+    std::shared_ptr<std_msgs::msg::Header> latest_color_header_;
+    std::atomic<bool> color_ready_{false};
+
+    rclcpp::TimerBase::SharedPtr infer_timer_;
     OnSetParametersCallbackHandle::SharedPtr callback_handle_;
 
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_color_;
@@ -276,38 +286,22 @@ private:
     }
 
     void ColorCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
-        if (!rclcpp::ok()) return;
-
-        cv_bridge::CvImagePtr cv_ptr;
         try {
-            cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
-        } catch (cv_bridge::Exception& e) {
-            RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
-            return;
+            auto cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+
+            if (cv_ptr->image.cols != 1280 || cv_ptr->image.rows != 720) {
+                cv::resize(cv_ptr->image, latest_color_img_, cv::Size(1280, 720));
+            } else {
+                latest_color_img_ = cv_ptr->image;
+            }
+
+            latest_color_header_ =
+                std::make_shared<std_msgs::msg::Header>(msg->header);
+
+            color_ready_ = true;
+        } catch (const cv_bridge::Exception &e) {
+            RCLCPP_ERROR(this->get_logger(), "Color cv_bridge error: %s", e.what());
         }
-
-        cv::Mat display_img;
-        if (cv_ptr->image.cols != 1280 || cv_ptr->image.rows != 720) {
-            cv::resize(cv_ptr->image, display_img, cv::Size(1280, 720));
-        } else {
-            display_img = cv_ptr->image;
-        }
-
-        cv::Mat nv12_mat;
-        segmenter_->PreProcess(display_img, model_input_w_, model_input_h_, nv12_mat);
-
-        auto pyramid = hobot::dnn_node::ImageProc::GetNV12PyramidFromNV12Img(
-            reinterpret_cast<const char*>(nv12_mat.data),
-            model_input_h_, model_input_w_, 
-            model_input_h_, model_input_w_
-        );
-        auto inputs = std::vector<std::shared_ptr<DNNInput>>{pyramid};
-
-        auto output = std::make_shared<YoloOutput>();
-        output->msg_header = std::make_shared<std_msgs::msg::Header>(msg->header);
-        output->src_img = std::make_shared<cv::Mat>(display_img.clone()); 
-
-        Run(inputs, output, nullptr, false);
     }
 
     void DepthCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
@@ -321,6 +315,34 @@ private:
             RCLCPP_ERROR(this->get_logger(), "Depth cv_bridge error: %s", e.what());
         }
     }
+        void InferTimerCallback() {
+            if (!color_ready_) return;
+
+            cv::Mat img = latest_color_img_.clone();
+            auto header = latest_color_header_;
+
+            // 1. PreProcess
+            cv::Mat nv12_mat;
+            segmenter_->PreProcess(img, model_input_w_, model_input_h_, nv12_mat);
+
+            // 2. 构造输入
+            auto pyramid = hobot::dnn_node::ImageProc::GetNV12PyramidFromNV12Img(
+                reinterpret_cast<const char*>(nv12_mat.data),
+                model_input_h_, model_input_w_,
+                model_input_h_, model_input_w_
+            );
+
+            auto inputs = std::vector<std::shared_ptr<DNNInput>>{pyramid};
+
+            // 3. 输出容器
+            auto output = std::make_shared<YoloOutput>();
+            output->msg_header = header;
+            output->src_img = std::make_shared<cv::Mat>(img);
+
+            // 4. Run（终于在“安全线程”里跑了）
+            Run(inputs, output, nullptr, false);
+}
+
 };
 
 int main(int argc, char** argv) {

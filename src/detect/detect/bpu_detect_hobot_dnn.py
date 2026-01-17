@@ -32,7 +32,6 @@ class BPU_Detect:
         self.nc = num_classes if num_classes is not None else len(self.labelname)
         self.window_created = window_created
         self.is_save = is_save
-        self.force_top_counter = 0 
         self._init_grids()
 
     def _init_grids(self) :
@@ -277,13 +276,7 @@ class BPU_Detect:
                 cv2.namedWindow("Detection Result", cv2.WINDOW_NORMAL)
                 cv2.setWindowProperty("Detection Result", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
                 self.window_created = True
-                self.force_top_counter = 10
 
-            if self.force_top_counter > 0:
-                cv2.setWindowProperty("Detection Result", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-                # 倒计时递减
-                self.force_top_counter -= 1
-                
             cv2.imshow("Detection Result", draw_img)
             
             # 【关键修改】稍微增加等待时间，从 1ms 改为 10ms
