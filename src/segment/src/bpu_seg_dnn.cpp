@@ -306,55 +306,60 @@ void BPU_Segment::detect_result(cv::Mat& img,
                                const std::vector<SegResult>& results, 
                                double fps,
                                bool show_img) {
-    // 1. 逻辑：如果不显示，则尝试关闭窗口，并直接返回（节省画图的 CPU 资源）
+    std::string win_name = "Segment Result";
+
+    // 1. 如果不显示：关闭窗口并退出
     if (!show_img) {
         if (window_created_) {
-            // 只有当窗口确实存在时才去销毁
             try {
-                cv::destroyWindow("Segment Result");
+                cv::destroyWindow(win_name);
             } catch (...) {}
             window_created_ = false;
-            cv::waitKey(1);
+            // 必须处理一次事件循环，否则窗口可能关不掉
+            cv::waitKey(1); 
         }
         return; 
     }
 
     // --- 以下是 show_img = true 时的逻辑 ---
 
-    // 2. 绘制结果 (画框、画 Mask)
+    // 2. 绘制结果 (因为 show_img 为 true，所以必须画)
+    if (img.empty()) return;
+    
     for (const auto& res : results) {
         draw_detection(img, res);
     }
 
-    // 3. 绘制 FPS (只在图像上显示)
+    // 绘制 FPS
     cv::putText(img, "FPS: " + std::to_string((int)fps), cv::Point(20, 50), 
                 cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
 
-    // 4. 显示窗口 (全屏逻辑)
-    std::string win_name = "Segment Result";
+    // 3. 窗口状态检查 (核心修改点：自动复活逻辑)
+    // 检查窗口是否被用户手动关闭 (visible < 1.0)
+    try {
+        if (window_created_ && cv::getWindowProperty(win_name, cv::WND_PROP_VISIBLE) < 1.0) {
+            // 关键点：如果检测到窗口被关闭，不是 return，而是重置标志位
+            window_created_ = false; 
+        }
+    } catch (...) {
+        // 如果获取属性报错，也认为窗口没了，需要重建
+        window_created_ = false;
+    }
+
+    // 4. 创建窗口 (如果未创建，或者上面被重置为 false)
     if (!window_created_) {
-        // 情况 A: 第一次启动，创建全屏窗口
         try {
             cv::namedWindow(win_name, cv::WINDOW_NORMAL);
             cv::setWindowProperty(win_name, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
             window_created_ = true;
-        } catch(...) {}
-    } else {
-        // 情况 B: 窗口应该已经存在。检查它是否被“谋杀”了。
-        // 如果我们认为窗口存在(window_created_=true)，但系统返回不可见(<1.0)
-        // 说明 Qt 执行了 wmctrl -c，或者用户点了关闭。
-        // 此时【千万不要】调用 imshow，否则窗口会复活成非全屏的普通窗口。
-        try {
-            if (cv::getWindowProperty(win_name, cv::WND_PROP_VISIBLE) < 1.0) {
-                // 检测到窗口已关闭，停止渲染，直接退出函数
-                return; 
-            }
-        } catch (...) {
-            return;
+        } catch(...) {
+            // 创建失败暂时忽略，下一帧再试
         }
     }
         
-    // 4. 只有窗口健在时，才更新图像
-    cv::imshow(win_name, img);
-    cv::waitKey(10); 
+    // 5. 显示图像
+    if (window_created_) {
+        cv::imshow(win_name, img);
+        cv::waitKey(1); // 1ms 延时，保持窗口响应
+    }
 }

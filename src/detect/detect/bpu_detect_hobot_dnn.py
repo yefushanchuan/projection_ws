@@ -57,10 +57,6 @@ class BPU_Detect:
             self.s_grid, self.s_anchors = _create_grid(self.strides[0])
             self.m_grid, self.m_anchors = _create_grid(self.strides[1]) 
             self.l_grid, self.l_anchors = _create_grid(self.strides[2])
-            
-            """print(f"网格尺寸: {self.s_grid.shape = }  {self.m_grid.shape = }  {self.l_grid.shape = }")
-            print(f"Anchors尺寸: {self.s_anchors.shape = }  {self.m_anchors.shape = }  {self.l_anchors.shape = }")"""
-
 
     def bgr2nv12_opencv(self, image):
         height, width = image.shape[0], image.shape[1]
@@ -77,57 +73,43 @@ class BPU_Detect:
     
     def PreProcess(self, img):#预处理函数
         if isinstance(img, str):
-            # 如果输入是字符串 (旧逻辑)，则从文件读取
             orig_img = cv2.imread(img)
             if orig_img is None:
                 raise ValueError(f"无法读取图片: {img}")
         elif isinstance(img, np.ndarray):
-            # 如果输入是NumPy数组 (新逻辑)，直接使用它
             orig_img = img
         else:
             raise TypeError(f"不支持的输入类型: {type(img)}。请输入 str 或 numpy.ndarray。")
 
-        # 保持比例缩放 + 填充，并返回比例和padding
         def letterbox(image, new_shape=(640, 640), color=(114, 114, 114)):
             shape = image.shape[:2]  # (h, w)
-            r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])  # 缩放比例
-            new_unpad = (int(round(shape[1] * r)), int(round(shape[0] * r)))  # 缩放后尺寸 (w, h)
-
-            # 缩放
+            r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+            new_unpad = (int(round(shape[1] * r)), int(round(shape[0] * r)))
             resized = cv2.resize(image, new_unpad, interpolation=cv2.INTER_LINEAR)
-
-            # 计算填充
-            dw = new_shape[1] - new_unpad[0]  # width padding
-            dh = new_shape[0] - new_unpad[1]  # height padding
+            dw = new_shape[1] - new_unpad[0]
+            dh = new_shape[0] - new_unpad[1]
             top, bottom = dh // 2, dh - dh // 2
             left, right = dw // 2, dw - dw // 2
-
-            # 填充
             padded = cv2.copyMakeBorder(resized, top, bottom, left, right,
                                         cv2.BORDER_CONSTANT, value=color)
-
             return padded, r, (left, top)
 
-        # 调用 letterbox
         input_tensor, ratio, (pad_w, pad_h) = letterbox(orig_img, (self.input_h, self.input_w))
         self.ratio = ratio
         self.pad_w = pad_w
         self.pad_h = pad_h  
-        # 转换颜色格式
         input_tensor = self.bgr2nv12_opencv(input_tensor)
-
-        # 送入推理
         return input_tensor
 
     def PostProcess(self):
         outputs = self.model_outputs
-            
+        
         # 处理三个输出层
         s_pred = outputs[0].buffer.reshape([-1, (5 + self.nc)])
         m_pred = outputs[1].buffer.reshape([-1, (5 + self.nc)])
         l_pred = outputs[2].buffer.reshape([-1, (5 + self.nc)])
 
-        # classify: 利用numpy向量化操作完成阈值筛选
+        # classify
         s_raw_max_scores = np.max(s_pred[:, 5:], axis=1)
         s_max_scores = 1 / ((1 + np.exp(-s_pred[:, 4]))*(1 + np.exp(-s_raw_max_scores)))
         s_valid_indices = np.flatnonzero(s_max_scores >= self.conf)
@@ -162,16 +144,14 @@ class BPU_Detect:
         l_wh = (l_dxyhw[:, 2:4] * 2.0) ** 2 * self.l_anchors[l_valid_indices, :]
         l_xyxy = np.concatenate([l_xy - l_wh * 0.5, l_xy + l_wh * 0.5], axis=-1)
 
-        # 大中小特征层阈值筛选结果拼接
         xyxy = np.concatenate((s_xyxy, m_xyxy, l_xyxy), axis=0)
         scores = np.concatenate((s_scores, m_scores, l_scores), axis=0)
         ids = np.concatenate((s_ids, m_ids, l_ids), axis=0)
 
-        xyxy[:, [0, 2]] -= self.pad_w  # x方向去除pad宽度
-        xyxy[:, [1, 3]] -= self.pad_h  # y方向去除pad高度
-        xyxy /= self.ratio            # 除以缩放比例还原原图尺寸
+        xyxy[:, [0, 2]] -= self.pad_w
+        xyxy[:, [1, 3]] -= self.pad_h
+        xyxy /= self.ratio
 
-        # NMS处理
         indices = cv2.dnn.NMSBoxes(xyxy.tolist(), scores.tolist(), self.conf, self.iou)
 
         if len(indices) > 0:
@@ -180,72 +160,58 @@ class BPU_Detect:
             self.scores = scores[indices]
             self.ids = ids[indices]
 
-            # # 🚀 只保留 "person" 类别 (COCO 的 id = 0)
-            # mask = (ids == 0)
-            # self.bboxes = bboxes[mask]
-            # self.scores = scores[mask]
-            # self.ids = ids[mask]
-
             self.centers = []
             for (x1, y1, x2, y2) in self.bboxes:
                 cx = (x1 + x2) // 2
                 cy = (y1 + y2) // 2
                 self.centers.append((cx, cy))
-
-#            for i, (cx, cy) in enumerate(self.centers):
-#                print(f"第{i}个框的中心点坐标：({cx}, {cy})")
-                
         else:
-#            print("No detections after NMS")
             self.bboxes = np.array([], dtype=np.int32).reshape(0, 4)
             self.scores = np.array([], dtype=np.float32)
             self.ids = np.array([], dtype=np.int32)
             self.centers = []
 
-    def draw_detection(self,img: np.array, 
-                        box,
-                        score: float, 
-                        class_id: int,
-                        labelname: list):
+    def draw_detection(self,img: np.array, box, score: float, class_id: int, labelname: list):
         x1, y1, x2, y2 = box
-        rdk_colors = [
-            (255, 0, 0),    # 红色
-            (0, 255, 0),    # 绿色
-            (0, 0, 255),    # 蓝色
-            (255, 255, 0),  # 黄色
-            (255, 0, 255),  # 紫色
-            (0, 255, 255),  # 青色
-        ]
+        rdk_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
         color = rdk_colors[class_id % len(rdk_colors)]
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
         label = f"{labelname[class_id]}: {score:.2f}"
         (label_width, label_height), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         label_x = x1
         label_y = y1 - 10 if y1 - 10 > label_height else y1 + 10
-        cv2.rectangle(
-            img, 
-            (label_x, label_y - label_height), 
-            (label_x + label_width, label_y + label_height), 
-            color, 
-            cv2.FILLED
-        )
-        cv2.putText(img, label, (label_x, label_y), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
+        cv2.rectangle(img, (label_x, label_y - label_height), (label_x + label_width, label_y + label_height), color, cv2.FILLED)
+        cv2.putText(img, label, (label_x, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
     def detect_result(self, img, show_img):
-        # 1. 逻辑：如果不保存也不显示，则尝试关闭窗口
-        if not self.is_save and not show_img:
-            # 只有当窗口确实存在时才去销毁
+        """
+        优化后的逻辑：
+        1. 优先处理窗口关闭逻辑。
+        2. 如果不需要显示且不需要保存，直接跳过耗时的 copy 和 draw，极大节省 CPU。
+        """
+        
+        # --- 1. 窗口清理逻辑 ---
+        # 如果不显示，但之前创建过窗口，则关闭它
+        if not show_img:
             if self.window_created:
                 try:
                     cv2.destroyWindow("Detection Result")
-                except cv2.error:
-                    pass # 防止窗口已经被用户手动关闭了报错
+                except:
+                    pass
                 self.window_created = False
-                cv2.waitKey(1) # 刷新事件循环
+                cv2.waitKey(1) # 刷新事件循环确保窗口关闭
+        
+        # --- 2. 提前退出逻辑 (性能优化核心) ---
+        # 如果既不保存，也不显示，直接返回，不做任何图像处理
+        if not self.is_save and not show_img:
             return
 
-        # 2. 准备图片数据
+        # ==========================================
+        # 只有代码运行到这里，说明要么需要保存，要么需要显示
+        # 此时再进行耗时的内存拷贝和绘制操作
+        # ==========================================
+
+        # 3. 准备绘制用的图片 (耗时操作: 内存拷贝)
         if isinstance(img, str):
             draw_img = cv2.imread(img)
         elif isinstance(img, np.ndarray):
@@ -253,67 +219,39 @@ class BPU_Detect:
         else:
             return
         
-        # 3. 绘制检测框
+        # 4. 绘制检测框 (耗时操作: 循环绘图)
         for class_id, score, bbox in zip(self.ids, self.scores, self.bboxes):
             x1, y1, x2, y2 = bbox
             self.draw_detection(draw_img, (x1, y1, x2, y2), score, class_id, self.labelname)
 
-        # 4. 保存图片
+        # 5. 保存图片逻辑
         if self.is_save:
             cv2.imwrite("result.jpg", draw_img)
         
-        # 5. 显示逻辑 (增强鲁棒性版)
+        # 6. 显示图片逻辑
+        # 注意：这里只需要处理 show_img=True 的情况，False 的情况在第1步已经处理了
         if show_img:
             win_name = "Detection Result"
             
+            # 检查窗口是否被用户手动关闭了
+            try:
+                if self.window_created and cv2.getWindowProperty(win_name, cv2.WND_PROP_VISIBLE) < 1.0:
+                    self.window_created = False
+            except:
+                self.window_created = False
+
+            # 如果窗口未创建或已关闭，则重新创建（全屏模式）
             if not self.window_created:
-                # 第一次：创建全屏窗口
                 cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
                 cv2.setWindowProperty(win_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
                 self.window_created = True
-            else:
-                # 后续：检查窗口是否还活着
-                try:
-                    prop = cv2.getWindowProperty(win_name, cv2.WND_PROP_VISIBLE)
-                    if prop < 1.0:
-                        # 窗口被外部关闭了，停止 imshow，防止复活
-                        return
-                except:
-                    return
 
-            # 只有活著才刷新
+            # 显示图像
             cv2.imshow(win_name, draw_img)
-            cv2.waitKey(10)
+            cv2.waitKey(1)
   
     def detect(self, img, show_img=True):
-        """
-        检测函数
-        Args:
-            img: 图片
-            show_img: 是否显示图片窗口 (bool)
-        """
-        # 预处理
         input_tensor = self.PreProcess(img)
-        
-        # 推理和后处理
         self.model_outputs = self.model.forward(input_tensor)
         self.PostProcess()
-        
-        # 将开关传递给可视化函数
         self.detect_result(img, show_img)
-
-if __name__ == "__main__":
-    labelname = [
-    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light", 
-    "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow", 
-    "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee", 
-    "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle", 
-    "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", 
-    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch", "potted plant", "bed", 
-    "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", 
-    "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
-    ]
-    test_img = "../dog.jpeg"
-    model_path = "../models/yolov5s_tag_v7.0_detect_640x640_bayese_nv12.bin"
-    infer = BPU_Detect(model_path, labelname, conf = 0.1, mode = False, is_save = True)
-    infer.detect(test_img, method_post = 1)

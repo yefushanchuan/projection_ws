@@ -1,7 +1,6 @@
 #include <chrono>
 #include <memory>
 #include <string>
-#include <cstdlib>
 #include <opencv2/opencv.hpp>
 
 #include "rclcpp/rclcpp.hpp"
@@ -17,7 +16,7 @@ public:
   ImageViewerTalker()
   : Node("image_viewer_talker"), window_initialized_(false)
   {
-    // 1. 参数声明与获取
+    // 1. 参数声明
     this->declare_parameter<double>("fx", 1612.8);
     this->declare_parameter<double>("fy", 1612.8);
     this->declare_parameter<double>("cx", 640.0);
@@ -45,22 +44,20 @@ public:
       std::bind(&ImageViewerTalker::points_callback, this, std::placeholders::_1)
     );
 
-    // 设置窗口名称
     window_name_ = "projection Image";
   }
 
   ~ImageViewerTalker() {
-      if (window_initialized_) {
-          cv::destroyAllWindows();
-      }
+      cv::destroyAllWindows();
   }
 
 private:
   void points_callback(const object3d_msgs::msg::Object3DArray::SharedPtr msg)
   {
-    // 1. 先生成图像数据（消息转换与绘图）
+    // 1. 创建黑色画布
     cv::Mat image = cv::Mat::zeros(projection_height_, projection_width_, CV_8UC3);
 
+    // 2. 绘制光斑
     for (const auto & obj : msg->objects)
     {
       double Z = obj.point.z;
@@ -69,76 +66,45 @@ private:
       int u = static_cast<int>((fx_ * obj.point.x / Z) + cx_); 
       int v = static_cast<int>((fy_ * obj.point.y / Z) + cy_);
       
-      double physical_radius = std::min(obj.width_m, obj.height_m) / 2.0;
-      int proj_radius_pixel = static_cast<int>((physical_radius * fx_) / Z);
-      if (proj_radius_pixel < 5) proj_radius_pixel = 5;
+      double physical_radius = std::min(obj.width_m, obj.height_m); 
+      int radius_pixel = static_cast<int>((physical_radius * fx_) / Z);
+      
+      if (radius_pixel < 5) radius_pixel = 5;
 
       if (u >= 0 && u < projection_width_ && v >= 0 && v < projection_height_) {
-        cv::circle(image, cv::Point(u, v), proj_radius_pixel/2, cv::Scalar(0, 255, 0), -1);
+        // 画实心绿圆
+        cv::circle(image, cv::Point(u, v), radius_pixel/2, cv::Scalar(0, 255, 0), -1);
       }
     }
 
-    // 2. 懒加载：如果是第一次收到数据，才创建窗口
-    if (!window_initialized_) {
-        init_window_once();
-    } 
-    else {
-        if (check_count_ > 30) {
-            try {
-                // 如果窗口被 Qt 强制关闭了 (VISIBLE < 1.0)，则停止刷新
-                if (cv::getWindowProperty(window_name_, cv::WND_PROP_VISIBLE) < 1.0) {
-                    return; // 此时返回是安全的，因为窗口确实已经没了
-                }
-            } catch (...) {
-                return;
-            }
-        } else {
-            // 保护期计数
-            check_count_++;
-        }
-    }
-
-    // 3. 显示当前帧
+    // 3. 显示逻辑
     if (!image.empty()) {
+        if (!window_initialized_) {
+            // 第一次：初始化全屏
+            cv::namedWindow(window_name_, cv::WINDOW_NORMAL);
+            cv::setWindowProperty(window_name_, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
+            window_initialized_ = true;
+        }
+        
+        // 【关键修复】不要在这里调用 getWindowProperty 检查窗口是否可见！
+        // 在 HDMI/X11 负载高时，查询窗口属性会阻塞主线程导致卡死。
+        // 直接无脑 imshow，就算窗口被遮挡，显存也会刷新，不会死锁。
+        
         cv::imshow(window_name_, image);
-        cv::waitKey(1); 
+        cv::waitKey(1); // 必须调用，且只等 1ms
     }
 
-    // 4. 发布图像消息（此时已经完成了绘制和显示）
+    // 4. 发布图像
     std_msgs::msg::Header header;
     header.stamp = this->now();
     header.frame_id = "projector_frame";
     try {
       image_pub_->publish(*cv_bridge::CvImage(header, "bgr8", image).toImageMsg());
     } catch (cv_bridge::Exception& e) {
-      RCLCPP_ERROR(this->get_logger(), "CvImage conversion error: %s", e.what());
+      RCLCPP_ERROR(this->get_logger(), "CvImage error: %s", e.what());
     }
   }
 
-  // 辅助函数：只在第一次收到数据时执行一次
-  void init_window_once() {
-      RCLCPP_INFO(this->get_logger(), "Data received. Initializing Projection Window...");
-      
-      // 创建窗口并设置全屏
-      cv::namedWindow(window_name_, cv::WINDOW_NORMAL);
-      cv::setWindowProperty(window_name_, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
-      
-      // 必须先 imshow 一次，wmctrl 才能找到窗口句柄
-      // 这里我们可以直接显示一张临时的黑底或直接利用 callback 里即将显示的图
-      // 为了稳妥，先显示个黑底占位，紧接着 callback 后面会刷上真正的图
-      cv::imshow(window_name_, cv::Mat::zeros(projection_height_, projection_width_, CV_8UC3));
-      cv::waitKey(200); // 给系统一点时间注册窗口
-
-      std::string cmd_fullscreen = "wmctrl -r \"" + window_name_ + "\" -b add,fullscreen";
-      std::system(cmd_fullscreen.c_str());
-
-      std::string cmd_focus = "wmctrl -a \"" + window_name_ + "\"";
-      std::system(cmd_focus.c_str()); 
-
-      window_initialized_ = true;
-  }
-
-  // 成员变量
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_pub_;
   rclcpp::Subscription<object3d_msgs::msg::Object3DArray>::SharedPtr points_sub_;
   
@@ -148,7 +114,6 @@ private:
   
   std::string window_name_;
   bool window_initialized_;
-  int check_count_;
 };
 
 int main(int argc, char * argv[])

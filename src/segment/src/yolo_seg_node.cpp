@@ -244,8 +244,8 @@ private:
             obj.point.x = x_m;
             obj.point.y = y_m;
             obj.point.z = z_m;
-            obj.width_m = radius_m;
-            obj.height_m = radius_m ;
+            obj.width_m = radius_m * 2.0f;
+            obj.height_m = radius_m * 2.0f;
 
             msg.objects.push_back(obj);
         }
