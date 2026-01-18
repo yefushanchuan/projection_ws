@@ -91,18 +91,16 @@ private:
         cv::waitKey(1); // 必须调用，且只等 1ms
 
         if (wmctrl_counter_ < 10) {
-            // 构造命令字符串
-            // -r : 指定窗口名称 (必须和 cv::namedWindow 的名字完全一致)
-            // -b add,fullscreen,above : 添加 "全屏" 和 "置顶" 属性
-            std::string cmd = "wmctrl -r '" + window_name_ + "' -b add,above";
-            
-            int ret = std::system(cmd.c_str());
-            
-            // 只有当 wmctrl 成功找到窗口并执行后，计数器才增加
-            // 这样可以防止窗口还没弹出来时计数器就跑完了
-            if (ret == 0) {
-                wmctrl_counter_++;
-            }
+            std::string cmd = "wmctrl -r '" + window_name_ + "' -b add,fullscreen,above";
+            int ret = std::system(cmd.c_str()); 
+            if(ret == 0)
+              wmctrl_counter_++;
+        }
+        else if (wmctrl_counter_ == 10) {
+            std::string cmd = "wmctrl -r '" + window_name_ + "' -b remove,above";
+            int ret = std::system(cmd.c_str()); 
+            if(ret == 0)
+              wmctrl_counter_++;
         }
     }
 
