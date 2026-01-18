@@ -5,8 +5,7 @@ MainWindow::MainWindow(QWidget *parent)
     , launch_process(nullptr)
     , ros_worker(nullptr)
 {
-    // 1. 【修改】先构建界面！
-    // 必须放在 Worker 启动之前，防止 Worker 访问未初始化的 UI 导致崩溃
+    // 1. 初始化 UI
     setupUi();
 
     // 2. 初始化状态栏
@@ -15,11 +14,7 @@ MainWindow::MainWindow(QWidget *parent)
     statusLabel = new QLabel("系统就绪");
     statusBar->addWidget(statusLabel);
 
-    // 3. 初始化 Worker (现在安全了)
-    ros_worker = new RosWorker(this);
-    ros_worker->start();
-
-    // 4. 初始化 Process
+    // 3. 初始化 Process
     launch_process = new QProcess(this);
     connect(launch_process, &QProcess::readyReadStandardOutput, [this](){
         QByteArray data = launch_process->readAllStandardOutput();
@@ -37,17 +32,31 @@ MainWindow::~MainWindow() {
     }
 
     // 2. 停 Worker
-    if(ros_worker) {
-        ros_worker->quit();
-        // 最多等 100ms，超时强杀，防止关窗口卡顿
-        if(!ros_worker->wait(100)) ros_worker->terminate();
-    }
+    destroyWorker();
 
     if(rclcpp::ok()) {
         rclcpp::shutdown();
     }
     
     forceCleanUp(false); 
+}
+
+void MainWindow::destroyWorker() {
+    if(ros_worker) {
+        // 告诉 ROS 停止 spin
+        ros_worker->stop(); 
+        
+        // 停止 QThread
+        ros_worker->quit();
+        if(!ros_worker->wait(200)) { // 等待退出，超时强杀
+            ros_worker->terminate();
+        }
+        
+        // 删除对象指针
+        delete ros_worker;
+        ros_worker = nullptr;
+        qDebug() << "RosWorker destroyed.";
+    }
 }
 
 void MainWindow::forceCleanUp(bool is_blocking) {
@@ -107,6 +116,12 @@ void MainWindow::onStartClicked()
     // 强制刷新 UI
     qApp->processEvents();
 
+    if (ros_worker) {
+        destroyWorker(); // 防御性编程，确保旧的没了
+    }
+    ros_worker = new RosWorker(this);
+    ros_worker->start();
+
     // 2. 获取参数
     QString show_img_val = chk_show_image->isChecked() ? "true" : "false";
     QString x_val = QString::number(spin_x->value(), 'f', 2);
@@ -141,8 +156,17 @@ void MainWindow::onStartClicked()
         btn_browse->setEnabled(false);
         
         statusLabel->setText("系统运行正常");
+
+        if(ros_worker) {
+            // 给一点点时间让节点初始化，然后同步参数
+            QTimer::singleShot(2000, this, [this](){
+               if(ros_worker) ros_worker->setParam("show_image", chk_show_image->isChecked() ? 1.0 : 0.0);
+            });
+        }
+
     } else {
-        QMessageBox::critical(this, "启动失败", "无法启动 Bash 进程，请检查环境！");
+        QMessageBox::critical(this, "启动失败", "无法启动 Bash 进程！");
+        destroyWorker(); // 启动失败也要清理
         btn_start->setText("启动系统");
         btn_start->setEnabled(true);
         statusLabel->setText("启动失败");
@@ -165,7 +189,7 @@ void MainWindow::onStopClicked()
     // 3. 调用封装好的清理函数
     // 包含了对所有节点的强杀和内存清理
     forceCleanUp(true); 
-
+    destroyWorker();
     // 4. 恢复界面状态
     btn_start->setEnabled(true);
     btn_start->setText("启动系统");

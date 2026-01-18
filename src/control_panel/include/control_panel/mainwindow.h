@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QDoubleSpinBox>
 #include <QLabel>
+#include <QTimer>
 #include <QGroupBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -37,6 +38,7 @@ private slots:
     void onStartClicked();
     void onStopClicked();
     void onParamChanged(const QString &name, double value);
+    void destroyWorker();
 
 private:
     void setupUi();
