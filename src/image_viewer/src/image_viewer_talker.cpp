@@ -11,7 +11,6 @@
 
 using namespace std::chrono_literals;
 
-
 class ImageViewerTalker : public rclcpp::Node
 {
 public:

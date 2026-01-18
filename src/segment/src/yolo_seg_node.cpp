@@ -95,8 +95,9 @@ public:
         sub_depth_filter_.subscribe(this, "/camera/realsense_d435i/aligned_depth_to_color/image_raw", qos.get_rmw_qos_profile());
 
         // 初始化同步器
+        // Queue size = 10, Slop = 0.1s (允许100ms误差)
         sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
-            SyncPolicy(50), sub_color_filter_, sub_depth_filter_
+            SyncPolicy(10), sub_color_filter_, sub_depth_filter_
         );
         
         // 注册同步回调
