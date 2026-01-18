@@ -66,14 +66,14 @@ private:
       int u = static_cast<int>((fx_ * obj.point.x / Z) + cx_); 
       int v = static_cast<int>((fy_ * obj.point.y / Z) + cy_);
       
-      double physical_radius = std::min(obj.width_m, obj.height_m); 
+      double physical_radius = std::min(obj.width_m, obj.height_m)/2.0; 
       int radius_pixel = static_cast<int>((physical_radius * fx_) / Z);
       
       if (radius_pixel < 5) radius_pixel = 5;
 
       if (u >= 0 && u < projection_width_ && v >= 0 && v < projection_height_) {
         // 画实心绿圆
-        cv::circle(image, cv::Point(u, v), radius_pixel/2, cv::Scalar(0, 255, 0), -1);
+        cv::circle(image, cv::Point(u, v), radius_pixel, cv::Scalar(0, 255, 0), -1);
       }
     }
 
