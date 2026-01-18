@@ -91,7 +91,7 @@ private:
         cv::waitKey(1); // 必须调用，且只等 1ms
 
         if (wmctrl_counter_ < 10) {
-            std::string cmd = "wmctrl -r '" + window_name_ + "' -b add,fullscreen,above";
+            std::string cmd = "wmctrl -r '" + window_name_ + "' -b add,above";
             int ret = std::system(cmd.c_str()); 
             if(ret == 0)
               wmctrl_counter_++;

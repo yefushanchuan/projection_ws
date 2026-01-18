@@ -296,7 +296,7 @@ private:
         if (!show_img) {
             auto log_dur = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_log_time_).count();
             if (log_dur >= 5000) { 
-                RCLCPP_INFO(this->get_logger(), "Node Running - FPS: %.2f", fps_);
+                RCLCPP_INFO(this->get_logger(), "FPS: %.2f", fps_);
                 last_log_time_ = now;
             }
         }

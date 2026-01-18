@@ -57,6 +57,7 @@ class YoloDetectNode(Node):
         # FPS 计算变量
         self.frame_count = 0
         self.start_time = time.time()
+        self.last_log_time = time.time()
         self.fps = 0.0
         self.fps_log_counter = 0
 
@@ -160,6 +161,12 @@ class YoloDetectNode(Node):
 
         if show_img:
             cv2.putText(cv_image, f"FPS: {self.fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+
+        else:
+            log_elapsed = curr_time - self.last_log_time
+            if log_elapsed >= 5.0:
+                self.get_logger().info(f"FPS: {self.fps:.2f}")
+                self.last_log_time = curr_time
 
         # --- 3. 推理 (BPU) ---
         # 注意：这里会阻塞回调，如果推理太慢且 fps 很高，message_filters 会自动丢弃处理不过来的帧
