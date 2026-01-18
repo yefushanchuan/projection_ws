@@ -41,9 +41,9 @@ class YoloDetectNode(Node):
         self.depth_sub = message_filters.Subscriber(self, Image, '/camera/realsense_d435i/aligned_depth_to_color/image_raw', qos_profile=qos_profile_sensor_data)
 
         # ApproximateTimeSynchronizer: 
-        # 参数2: queue_size=50 (缓冲队列长度)
-        # 参数3: slop=0.2 (允许 200ms 的时间误差，RealSense通常在30ms以内)
-        self.ts = message_filters.ApproximateTimeSynchronizer([self.color_sub, self.depth_sub], 50, 0.2)
+        # 参数2: queue_size=10 (缓冲队列长度)
+        # 参数3: slop=0.1 (允许 100ms 的时间误差，RealSense通常在30ms以内)
+        self.ts = message_filters.ApproximateTimeSynchronizer([self.color_sub, self.depth_sub], 10, 0.1)
         self.ts.registerCallback(self.sync_callback)
 
         self.publisher_ = self.create_publisher(Object3DArray, 'target_points_array', qos_profile_sensor_data)
