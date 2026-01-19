@@ -5,7 +5,7 @@
   <version>0.0.1</version>
   <description>ROS 2 Control Panel with Qt5</description>
   <maintainer email="user@todo.todo">User</maintainer>
-  <license>TODO</license>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
