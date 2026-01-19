@@ -1,4 +1,4 @@
-#include "segment/bpu_seg_dnn.h"
+#include "segment_yolov8_11_bpu/bpu_seg_dnn.h"
 #include <cmath>
 #include <algorithm>
 #include <opencv2/highgui/highgui.hpp>

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(detect11)
+project(detect_yolov8_11_cpu)
 
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
@@ -47,35 +47,40 @@ target_link_libraries(yolo_detector_lib
 
 # 3. 【核心修改】编译 ROS 节点 (Node)
 # 将 src/yolo_detect_node.cpp 编译为可执行文件
-add_executable(detect11_node src/yolo_detect_node.cpp)
+add_executable(yolo_detect_node src/yolo_detect_node.cpp)
+
+set_target_properties(yolo_detect_node PROPERTIES
+  INSTALL_RPATH "${ONNX_INSTALL_PATH}/lib"
+  BUILD_WITH_INSTALL_RPATH TRUE
+)
 
 # 设置节点的头文件路径
-target_include_directories(detect11_node PUBLIC
+target_include_directories(yolo_detect_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
   ${OpenCV_INCLUDE_DIRS}
 )
 
 # 节点需要链接：刚才编译的库(yolo_detector_lib) + ROS 组件
-target_link_libraries(detect11_node
+target_link_libraries(yolo_detect_node
   yolo_detector_lib   # <--- 链接我们自己写的库
   ${OpenCV_LIBRARIES}
-  ament_index_cpp
 )
 
 # 添加 ROS 依赖
-ament_target_dependencies(detect11_node
+ament_target_dependencies(yolo_detect_node
   rclcpp
   sensor_msgs
   cv_bridge
   message_filters
   image_transport
   object3d_msgs
+  ament_index_cpp
 )
 
 # 4. 安装规则
 # 安装可执行文件
-install(TARGETS detect11_node
+install(TARGETS yolo_detect_node
   DESTINATION lib/${PROJECT_NAME})
 
 # 安装库 (为了规范，虽然这个包不一定给别人用)

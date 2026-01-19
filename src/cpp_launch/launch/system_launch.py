@@ -19,11 +19,26 @@ def generate_launch_description():
     z_off_arg = DeclareLaunchArgument('z_offset', default_value='0.00', description='Translation in Z')
     model_arg = DeclareLaunchArgument('model_filename', default_value='yolov5x_tag_v7.0_detect_640x640_bayese_nv12.bin', description='Model filename')
     
+    model_filename = LaunchConfiguration('model_filename')
     # ==========================================
-    # 0. 判断模型类型
+    # 1. 判断模型类型
     # ==========================================
-    is_seg_model = PythonExpression(["'seg' in '", LaunchConfiguration('model_filename'), "'"])
-    is_detect_model = PythonExpression(["'seg' not in '", LaunchConfiguration('model_filename'), "'"])
+
+    # 1. 判断是否为 ONNX 模型 (后缀是否为 .onnx)
+    # 拼接后的 Python 代码类似于: 'filename.onnx'.endswith('.onnx')
+    is_onnx_model = PythonExpression(["'", model_filename, "'.endswith('.onnx')"])
+
+    # 2. 判断是否为 BPU Seg 模型 (不是 ONNX 且 包含 'seg')
+    # 拼接后: not 'file.bin'.endswith('.onnx') and 'seg' in 'file.bin'
+    is_bpu_seg_model = PythonExpression([
+        "not '", model_filename, "'.endswith('.onnx') and 'seg' in '", model_filename, "'"
+    ])
+
+    # 3. 判断是否为 BPU Detect 模型 (不是 ONNX 且 不含 'seg')
+    # 拼接后: not 'file.bin'.endswith('.onnx') and 'seg' not in 'file.bin'
+    is_bpu_detect_model = PythonExpression([
+        "not '", model_filename, "'.endswith('.onnx') and 'seg' not in '", model_filename, "'"
+    ])
 
     # ==========================================
     # 2. RealSense 相机启动 (基础驱动)
@@ -92,15 +107,18 @@ def generate_launch_description():
     # 这里放所有的算法节点：detect, transform, viewer
     algorithm_nodes = GroupAction(
         actions=[
-            LogInfo(msg="[Launch] Camera ready! Checking model type..."),
+            LogInfo(msg=PythonExpression(["'[Launch] Model File: ', '", model_filename, "'"])),
+            LogInfo(msg="[Launch] Mode: ONNX Mode Activated!", condition=IfCondition(is_onnx_model)),
+            LogInfo(msg="[Launch] Mode: BPU Segment Mode Activated!", condition=IfCondition(is_bpu_seg_model)),
+            LogInfo(msg="[Launch] Mode: BPU Detect Mode Activated!", condition=IfCondition(is_bpu_detect_model)),
             
-            # (A1) YOLO Detect Node
+            # (A1) YOLO Detect Node(ONNX)
             Node(
-                package='detect',
+                package='detect_yolov8_11_cpu',
                 executable='yolo_detect_node',
                 name='inference_node',
                 output='screen',
-                condition=IfCondition(is_detect_model),
+                condition=IfCondition(is_onnx_model),
                 parameters=[{
                     'conf_thres': LaunchConfiguration('conf_thres'),
                     'show_image': LaunchConfiguration('show_image'),
@@ -108,13 +126,27 @@ def generate_launch_description():
                 }]
             ),
 
-            # (A2) YOLO Segment Node
+            # (A2) YOLO Detect Node(BIN)
             Node(
-                package='segment',
+                package='detect_yolov5_bpu',
+                executable='yolo_detect_node',
+                name='inference_node',
+                output='screen',
+                condition=IfCondition(is_bpu_detect_model),
+                parameters=[{
+                    'conf_thres': LaunchConfiguration('conf_thres'),
+                    'show_image': LaunchConfiguration('show_image'),
+                    'model_filename': LaunchConfiguration('model_filename')
+                }]
+            ),
+
+            # (A3) YOLO Segment Node
+            Node(
+                package='segment_yolov8_11_bpu',
                 executable='yolo_seg_node',
                 name='inference_node',
                 output='screen',
-                condition=IfCondition(is_seg_model),
+                condition=IfCondition(is_bpu_seg_model),
                 parameters=[{
                     'conf_thres': LaunchConfiguration('conf_thres'),
                     'show_image': LaunchConfiguration('show_image'),

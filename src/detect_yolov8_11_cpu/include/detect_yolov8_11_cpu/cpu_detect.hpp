@@ -15,13 +15,13 @@ struct Detection {
     cv::Point center;
 };
 
-class Yolo11Detector {
+class CPU_Detect {
 public:
     // 构造函数
-    Yolo11Detector(const std::string& model_path, float conf_thres = 0.5, float iou_thres = 0.45);
+    CPU_Detect(const std::string& model_path, float conf_thres = 0.5, float iou_thres = 0.45);
     
     // 析构函数
-    ~Yolo11Detector() = default;
+    ~CPU_Detect() = default;
 
     // 推理核心函数
     std::vector<Detection> detect(cv::Mat& img, bool show_img);

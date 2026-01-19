@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 from glob import glob
-package_name = 'detect'
+package_name = 'detect_yolov5_bpu'
 
 setup(
     name=package_name,
@@ -21,7 +21,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'yolo_detect_node = detect.yolo_detect_node:main'
+            'yolo_detect_node = detect_yolov5_bpu.yolo_detect_node:main'
         ],
     },
 )

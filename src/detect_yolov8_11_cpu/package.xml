@@ -1,11 +1,11 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>detect11</name>
+  <name>detect_yolov8_11_cpu</name>
   <version>0.0.0</version>
   <description>YOLOv11 ONNX Inference Node</description>
   <maintainer email="user@todo.todo">user</maintainer>
-  <license>TODO</license>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

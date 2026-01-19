@@ -16,7 +16,7 @@
 #include "object3d_msgs/msg/object3_d_array.hpp"
 
 // Include our new detector library
-#include "detect11/cpu_detect.hpp"
+#include "detect_yolov8_11_cpu/cpu_detect.hpp"
 
 using namespace std::chrono_literals;
 
@@ -49,10 +49,10 @@ public:
             final_model_path = model_filename;
         } else {
             try {
-                std::string package_share_directory = ament_index_cpp::get_package_share_directory("detect11");
+                std::string package_share_directory = ament_index_cpp::get_package_share_directory("detect_yolov8_11_cpu");
                 final_model_path = (fs::path(package_share_directory) / "models" / model_filename).string();
             } catch (const std::exception& e) {
-                RCLCPP_ERROR(this->get_logger(), "Package error: %s", e.what());
+                RCLCPP_ERROR(this->get_logger(), "Error finding package path: %s", e.what());
                 return;
             }
         }
@@ -62,11 +62,11 @@ public:
             return;
         }
 
-        RCLCPP_INFO(this->get_logger(), "Initializing Yolo11Detector with: %s", final_model_path.c_str());
+        RCLCPP_INFO(this->get_logger(), "Initializing CPU_Detect with: %s", final_model_path.c_str());
         
         try {
             // 初始化探测器类
-            detector_ = std::make_unique<Yolo11Detector>(final_model_path, conf_thres_);
+            detector_ = std::make_unique<CPU_Detect>(final_model_path, conf_thres_);
         } catch (const std::exception& e) {
             RCLCPP_ERROR(this->get_logger(), "Detector init failed: %s", e.what());
             return;
@@ -147,7 +147,7 @@ private:
         }
 
         if (show_image_) {
-            cv::putText(color_img, "FPS: " + std::to_string((int)fps_), cv::Point(10, 30), 
+            cv::putText(color_img, cv::format("FPS: %.2f", fps_), cv::Point(10, 30), 
                         cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
         }
 
@@ -157,15 +157,15 @@ private:
 
         // 显示逻辑
         if (show_image_) {
-            const std::string win_name = "YOLOv11 Detection";
+            const std::string win_name = "Detection Result";
             cv::namedWindow(win_name, cv::WINDOW_NORMAL);
             cv::setWindowProperty(win_name, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
             cv::imshow(win_name, color_img);
             cv::waitKey(1);
         } else {
             try {
-                if (cv::getWindowProperty("YOLOv11 Detection", cv::WND_PROP_VISIBLE) >= 0) {
-                    cv::destroyWindow("YOLOv11 Detection");
+                if (cv::getWindowProperty("Detection Result", cv::WND_PROP_VISIBLE) >= 0) {
+                    cv::destroyWindow("Detection Result");
                     cv::waitKey(1);
                 }
             } catch (...) {}
@@ -206,7 +206,7 @@ private:
     double fx_, fy_, cx_, cy_;
     double conf_thres_;
     bool show_image_;
-    std::unique_ptr<Yolo11Detector> detector_; // 仅持有指针
+    std::unique_ptr<CPU_Detect> detector_; // 仅持有指针
     
     message_filters::Subscriber<sensor_msgs::msg::Image> color_sub_;
     message_filters::Subscriber<sensor_msgs::msg::Image> depth_sub_;

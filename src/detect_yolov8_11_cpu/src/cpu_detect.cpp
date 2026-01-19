@@ -1,4 +1,4 @@
-#include "detect11/cpu_detect.hpp"
+#include "detect_yolov8_11_cpu/cpu_detect.hpp"
 #include <cmath>
 #include <iostream>
 #include <algorithm>
@@ -16,7 +16,7 @@ static const std::vector<std::string> COCO_CLASSES = {
     "hair drier", "toothbrush"
 };
 
-Yolo11Detector::Yolo11Detector(const std::string& model_path, float conf_thres, float iou_thres)
+CPU_Detect::CPU_Detect(const std::string& model_path, float conf_thres, float iou_thres)
     : env_(ORT_LOGGING_LEVEL_WARNING, "Yolo11"), 
       session_options_(), 
       conf_threshold_(conf_thres), 
@@ -46,14 +46,14 @@ Yolo11Detector::Yolo11Detector(const std::string& model_path, float conf_thres, 
     output_name_ = std::string(output_name_ptr.get()); // Deep copy
 }
 
-std::string Yolo11Detector::getClassName(int id) const {
+std::string CPU_Detect::getClassName(int id) const {
     if (id >= 0 && id < (int)COCO_CLASSES.size()) {
         return COCO_CLASSES[id];
     }
     return "unknown";
 }
 
-std::vector<Detection> Yolo11Detector::detect(cv::Mat& img, bool show_img) {
+std::vector<Detection> CPU_Detect::detect(cv::Mat& img, bool show_img) {
     // 1. 预处理 (Letterbox)
     cv::Mat input_img;
     float ratio = std::min((float)input_w_ / img.cols, (float)input_h_ / img.rows);

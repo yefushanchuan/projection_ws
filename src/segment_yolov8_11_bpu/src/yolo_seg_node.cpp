@@ -12,8 +12,8 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 
-#include "segment/yolo_seg_common.h"
-#include "segment/bpu_seg_dnn.h"
+#include "segment_yolov8_11_bpu/yolo_seg_common.h"
+#include "segment_yolov8_11_bpu/bpu_seg_dnn.h"
 
 using hobot::dnn_node::DNNInput;
 using hobot::dnn_node::DnnNodeOutput;
@@ -49,9 +49,9 @@ public:
         } else {
             // 如果是相对路径/文件名，则拼接 share 目录
             try {
-                resolved_model_path_ = ament_index_cpp::get_package_share_directory("segment") + "/models/" + model_param;
+                resolved_model_path_ = ament_index_cpp::get_package_share_directory("segment_yolov8_11_bpu") + "/models/" + model_param;
             } catch (const std::exception& e) {
-                RCLCPP_ERROR(this->get_logger(), "Can not find package 'segment': %s", e.what());
+                RCLCPP_ERROR(this->get_logger(), "Error finding package path: %s", e.what());
                 return;
             }
         }

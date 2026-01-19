@@ -234,7 +234,7 @@ void MainWindow::setupUi() {
     btn_browse->setMaximumWidth(50); 
     connect(btn_browse, &QPushButton::clicked, [this](){
         QString fileName = QFileDialog::getOpenFileName(
-            this, "选择模型文件", "/home/sunrise", "Model Files (*.bin);;All Files (*)"
+            this, "选择模型文件", "/home/sunrise", "Model Files (*.bin *.onnx);;All Files (*)"
         );
         if (!fileName.isEmpty()) {
             le_model_path->setText(fileName);

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(segment)
+project(segment_yolov8_11_bpu)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -41,8 +41,8 @@ add_executable(yolo_seg_node
 )
 
 # 4. Include Directories
-# "include" 目录包含了 include/segment/bpu_seg_dnn.h
-# 代码中可以使用 #include "segment/bpu_seg_dnn.h"
+# "include" 目录包含了 include/segment_yolov8_11_bpu/bpu_seg_dnn.h
+# 代码中可以使用 #include "segment_yolov8_11_bpu/bpu_seg_dnn.h"
 include_directories(
   include
   ${OpenCV_INCLUDE_DIRS}

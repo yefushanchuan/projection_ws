@@ -6,7 +6,7 @@ import cv2
 import os
 import time
 from ament_index_python.packages import get_package_share_directory
-from detect.bpu_detect_hobot_dnn import BPU_Detect
+from detect_yolov5_bpu.bpu_detect_hobot_dnn import BPU_Detect
 from rcl_interfaces.msg import SetParametersResult 
 from object3d_msgs.msg import Object3D, Object3DArray
 from rclpy.qos import qos_profile_sensor_data
@@ -80,7 +80,7 @@ class YoloDetectNode(Node):
                 self.get_logger().error(f"Error: Model file not found at {model_path}")
         else:
             try:
-                pkg_path = get_package_share_directory('detect')
+                pkg_path = get_package_share_directory('detect_yolov5_bpu')
                 model_path = os.path.join(pkg_path, 'models', model_filename)
             except Exception as e:
                 self.get_logger().error(f"Error finding package path: {e}")
