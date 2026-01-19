@@ -55,7 +55,6 @@ void MainWindow::destroyWorker() {
         // 删除对象指针
         delete ros_worker;
         ros_worker = nullptr;
-        qDebug() << "RosWorker destroyed.";
     }
 }
 

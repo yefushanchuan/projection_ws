@@ -6,7 +6,6 @@
 #include <map>
 #include <thread>
 #include <opencv2/opencv.hpp>
-#include <cstdlib> 
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
@@ -40,8 +39,8 @@ public:
     this->declare_parameter<int>("projection_height", 720);
 
     // 新增：滤波参数 (调节这两个数改变平滑程度)
-    this->declare_parameter<double>("filter_min_alpha", 0.01); // 越小越稳
-    this->declare_parameter<double>("filter_gamma", 0.3);     // 越大跟手越快
+    this->declare_parameter<double>("filter_min_alpha", 0.0); // 越小越稳
+    this->declare_parameter<double>("filter_gamma", 0.1);     // 越大跟手越快
 
     fx_ = this->get_parameter("fx").as_double();
     fy_ = this->get_parameter("fy").as_double();
@@ -176,19 +175,12 @@ private:
         ++it;
     }
 
-    // 4. 显示逻辑 (保留你原来的 wmctrl 逻辑，但做了非阻塞优化)
+    // 4. 显示逻辑
     if (!image.empty()) {
         if (!window_initialized_) {
             cv::namedWindow(window_name_, cv::WINDOW_NORMAL);
             cv::setWindowProperty(window_name_, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
             window_initialized_ = true;
-
-            // 优化：把 wmctrl 放到线程里，防止阻塞回调导致卡顿
-            std::thread([this](){
-                std::this_thread::sleep_for(std::chrono::seconds(2));
-                std::string cmd = "wmctrl -r '" + window_name_ + "' -b add,above";
-                int ret = std::system(cmd.c_str()); (void)ret;
-            }).detach();
         }
         
         cv::imshow(window_name_, image);
