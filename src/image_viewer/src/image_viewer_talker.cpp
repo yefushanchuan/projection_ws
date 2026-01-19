@@ -40,8 +40,8 @@ public:
     this->declare_parameter<int>("projection_height", 720);
 
     // 新增：滤波参数 (调节这两个数改变平滑程度)
-    this->declare_parameter<double>("filter_min_alpha", 0.01); // 越小越稳
-    this->declare_parameter<double>("filter_gamma", 0.3);     // 越大跟手越快
+    this->declare_parameter<double>("filter_min_alpha", 0.3); // 越小越稳
+    this->declare_parameter<double>("filter_gamma", 0.1);     // 越大跟手越快
 
     fx_ = this->get_parameter("fx").as_double();
     fy_ = this->get_parameter("fy").as_double();
