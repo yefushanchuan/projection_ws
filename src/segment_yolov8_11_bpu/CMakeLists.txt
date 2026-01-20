@@ -5,7 +5,9 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# 1. find dependencies
+# =========================================================================
+# 1. Find Dependencies (添加 yolo_common)
+# =========================================================================
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -16,7 +18,12 @@ find_package(ament_index_cpp REQUIRED)
 find_package(object3d_msgs REQUIRED)
 find_package(message_filters REQUIRED)
 
-# 2. TROS/BPU Library Paths
+# 新增依赖
+find_package(yolo_common REQUIRED)
+
+# =========================================================================
+# 2. TROS/BPU Library Paths (保持不变)
+# =========================================================================
 if(DEFINED ENV{TROS_DISTRO})
     set(TROS_PATH /opt/tros/humble)
 else()
@@ -32,24 +39,25 @@ link_directories(
 )
 
 # =========================================================================
-# 3. Build Executable (核心修改)
-# 将 yolo_seg_node.cpp 和 bpu_seg_dnn.cpp 一起编译
+# 3. Build Executable
 # =========================================================================
 add_executable(yolo_seg_node 
   src/yolo_seg_node.cpp
   src/bpu_seg_dnn.cpp
 )
 
+# =========================================================================
 # 4. Include Directories
-# "include" 目录包含了 include/segment_yolov8_11_bpu/bpu_seg_dnn.h
-# 代码中可以使用 #include "segment_yolov8_11_bpu/bpu_seg_dnn.h"
+# =========================================================================
 include_directories(
   include
   ${OpenCV_INCLUDE_DIRS}
   ${RAPIDJSON_INCLUDE_DIRS}
 )
 
-# 5. Link Dependencies
+# =========================================================================
+# 5. Link Dependencies (添加 yolo_common)
+# =========================================================================
 ament_target_dependencies(yolo_seg_node
   "rclcpp"
   "sensor_msgs"
@@ -58,6 +66,7 @@ ament_target_dependencies(yolo_seg_node
   "ament_index_cpp"
   "object3d_msgs"
   "message_filters"
+  "yolo_common"   # <--- 关键修改：链接 yolo_common 库
 )
 
 target_link_libraries(yolo_seg_node

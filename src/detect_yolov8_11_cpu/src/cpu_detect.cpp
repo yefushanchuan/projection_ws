@@ -3,7 +3,7 @@
 #include <iostream>
 #include <algorithm>
 
-// COCO 类别定义 (隐藏在 cpp 内部，不污染全局)
+// 初始化列表
 static const std::vector<std::string> COCO_CLASSES = {
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
     "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
@@ -20,7 +20,8 @@ CPU_Detect::CPU_Detect(const std::string& model_path, float conf_thres, float io
     : env_(ORT_LOGGING_LEVEL_WARNING, "Yolo11"), 
       session_options_(), 
       conf_threshold_(conf_thres), 
-      iou_threshold_(iou_thres) 
+      iou_threshold_(iou_thres),
+      class_names_(COCO_CLASSES)
 {
     session_options_.SetIntraOpNumThreads(4);
     session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -36,24 +37,17 @@ CPU_Detect::CPU_Detect(const std::string& model_path, float conf_thres, float io
     
     // Input info
     auto input_name_ptr = session_->GetInputNameAllocated(0, allocator);
-    input_name_ = std::string(input_name_ptr.get()); // Deep copy
+    input_name_ = std::string(input_name_ptr.get());
     auto input_shape = session_->GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
     input_h_ = input_shape[2];
     input_w_ = input_shape[3];
 
     // Output info
     auto output_name_ptr = session_->GetOutputNameAllocated(0, allocator);
-    output_name_ = std::string(output_name_ptr.get()); // Deep copy
+    output_name_ = std::string(output_name_ptr.get());
 }
 
-std::string CPU_Detect::getClassName(int id) const {
-    if (id >= 0 && id < (int)COCO_CLASSES.size()) {
-        return COCO_CLASSES[id];
-    }
-    return "unknown";
-}
-
-std::vector<Detection> CPU_Detect::detect(cv::Mat& img, bool show_img) {
+std::vector<yolo_common::UnifiedResult> CPU_Detect::detect(const cv::Mat& img) {
     // 1. 预处理 (Letterbox)
     cv::Mat input_img;
     float ratio = std::min((float)input_w_ / img.cols, (float)input_h_ / img.rows);
@@ -63,7 +57,9 @@ std::vector<Detection> CPU_Detect::detect(cv::Mat& img, bool show_img) {
     int dh = (input_h_ - new_h) / 2;
 
     cv::resize(img, input_img, cv::Size(new_w, new_h));
-    cv::copyMakeBorder(input_img, input_img, dh, input_h_ - new_h - dh, dw, input_w_ - new_w - dw, cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
+    cv::copyMakeBorder(input_img, input_img, dh, input_h_ - new_h - dh, 
+                       dw, input_w_ - new_w - dw, 
+                       cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
 
     cv::Mat blob;
     cv::dnn::blobFromImage(input_img, blob, 1.0 / 255.0, cv::Size(input_w_, input_h_), cv::Scalar(0, 0, 0), true, false);
@@ -71,17 +67,15 @@ std::vector<Detection> CPU_Detect::detect(cv::Mat& img, bool show_img) {
     // 2. 推理
     std::vector<int64_t> input_dims = {1, 3, input_h_, input_w_};
     size_t input_tensor_size = 1 * 3 * input_h_ * input_w_;
-    std::vector<float> input_tensor_values(input_tensor_size);
     
-    if (blob.isContinuous()) {
-        input_tensor_values.assign((float*)blob.datastart, (float*)blob.dataend);
-    } else {
-        std::cerr << "Error: Blob is not continuous" << std::endl;
-        return {};
+    // 检查连续性
+    if (!blob.isContinuous()) {
+         return {};
     }
 
     auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-    Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values.data(), input_tensor_size, input_dims.data(), input_dims.size());
+    Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+        memory_info, (float*)blob.datastart, input_tensor_size, input_dims.data(), input_dims.size());
 
     const char* input_names[] = {input_name_.c_str()};
     const char* output_names[] = {output_name_.c_str()};
@@ -91,7 +85,9 @@ std::vector<Detection> CPU_Detect::detect(cv::Mat& img, bool show_img) {
     // 3. 后处理
     float* output_data = output_tensors[0].GetTensorMutableData<float>();
     auto output_shape = output_tensors[0].GetTensorTypeAndShapeInfo().GetShape();
-    int rows = output_shape[2]; 
+    // Shape: [Batch, Channels, Anchors] -> [1, 84, 8400]
+    int rows = output_shape[2]; // 8400 anchors
+    int dimensions = output_shape[1]; // 84 (4 box + 80 cls)
 
     std::vector<int> class_ids;
     std::vector<float> confidences;
@@ -101,6 +97,8 @@ std::vector<Detection> CPU_Detect::detect(cv::Mat& img, bool show_img) {
         float max_score = -1.0f;
         int class_id = -1;
         
+        // Find best class score
+        // Class scores start at index 4
         for (int c = 0; c < 80; ++c) {
             float score = output_data[(4 + c) * rows + i];
             if (score > max_score) {
@@ -115,6 +113,7 @@ std::vector<Detection> CPU_Detect::detect(cv::Mat& img, bool show_img) {
             float w  = output_data[2 * rows + i];
             float h  = output_data[3 * rows + i];
 
+            // Restore coordinates
             float x = (cx - w / 2 - dw) / ratio;
             float y = (cy - h / 2 - dh) / ratio;
             float w_orig = w / ratio;
@@ -129,20 +128,25 @@ std::vector<Detection> CPU_Detect::detect(cv::Mat& img, bool show_img) {
     std::vector<int> indices;
     cv::dnn::NMSBoxes(boxes, confidences, conf_threshold_, iou_threshold_, indices);
 
-    std::vector<Detection> results;
+    std::vector<yolo_common::UnifiedResult> results;
     for (int idx : indices) {
-        Detection det;
-        det.class_id = class_ids[idx];
-        det.confidence = confidences[idx];
-        det.box = boxes[idx];
-        det.center = cv::Point(det.box.x + det.box.width / 2, det.box.y + det.box.height / 2);
-        results.push_back(det);
+        yolo_common::UnifiedResult res;
+        res.id = class_ids[idx];
+        res.score = confidences[idx];
+        res.box = boxes[idx];
         
-        if (show_img) {
-            cv::rectangle(img, det.box, cv::Scalar(0, 255, 0), 2);
-            std::string label = COCO_CLASSES[det.class_id] + " " + cv::format("%.2f", det.confidence);
-            cv::putText(img, label, cv::Point(det.box.x, det.box.y - 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 2);
+        // 计算中心点 (UnifiedResult 规范)
+        res.center = cv::Point2f(res.box.x + res.box.width / 2.0f, 
+                                 res.box.y + res.box.height / 2.0f);
+                                 
+        if (res.id >= 0 && res.id < (int)class_names_.size()) {
+            res.class_name = class_names_[res.id];
+        } else {
+            res.class_name = "unknown";
         }
+        
+        // 此包为纯检测，mask 为空，mic_radius 为 0
+        results.push_back(res);
     }
     return results;
 }

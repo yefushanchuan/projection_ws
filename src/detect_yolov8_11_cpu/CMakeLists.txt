@@ -5,7 +5,9 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
 endif()
 
+# =========================================================
 # 1. 依赖查找
+# =========================================================
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -16,7 +18,12 @@ find_package(object3d_msgs REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(OpenCV REQUIRED)
 
-# ARM 架构下手动指定 ONNX Runtime (根据你之前的成功经验)
+# 【修改点 1】必须查找 yolo_common
+find_package(yolo_common REQUIRED)
+
+# =========================================================
+# ARM 架构下手动指定 ONNX Runtime
+# =========================================================
 set(ONNX_INSTALL_PATH "/opt/onnxruntime")
 set(ONNXRUNTIME_INCLUDE_DIRS "${ONNX_INSTALL_PATH}/include")
 find_library(ONNXRUNTIME_LIBRARIES onnxruntime PATHS "${ONNX_INSTALL_PATH}/lib" NO_DEFAULT_PATH)
@@ -27,11 +34,11 @@ else()
     message(STATUS "Found ONNX Runtime: ${ONNXRUNTIME_LIBRARIES}")
 endif()
 
-# 2. 【核心修改】编译推理引擎库 (Lib)
-# 将 src/cpu_detect.cpp 编译为一个名为 yolo_detector_lib 的库
+# =========================================================
+# 2. 编译推理引擎库 (Lib)
+# =========================================================
 add_library(yolo_detector_lib src/cpu_detect.cpp)
 
-# 设置库的头文件路径
 target_include_directories(yolo_detector_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
@@ -39,14 +46,22 @@ target_include_directories(yolo_detector_lib PUBLIC
   ${ONNXRUNTIME_INCLUDE_DIRS}
 )
 
-# 库需要链接 OpenCV 和 ONNXRuntime
+# 链接原生库 (OpenCV, ONNX)
 target_link_libraries(yolo_detector_lib
   ${OpenCV_LIBRARIES}
   ${ONNXRUNTIME_LIBRARIES}
 )
 
-# 3. 【核心修改】编译 ROS 节点 (Node)
-# 将 src/yolo_detect_node.cpp 编译为可执行文件
+# 【修改点 2】使用 ament 添加 ROS 包依赖 (包含 yolo_common)
+# 这会自动处理 yolo_common 的头文件路径，解决找不到头文件的问题
+ament_target_dependencies(yolo_detector_lib
+  "rclcpp" 
+  "yolo_common" 
+)
+
+# =========================================================
+# 3. 编译 ROS 节点 (Node)
+# =========================================================
 add_executable(yolo_detect_node src/yolo_detect_node.cpp)
 
 set_target_properties(yolo_detect_node PROPERTIES
@@ -54,46 +69,44 @@ set_target_properties(yolo_detect_node PROPERTIES
   BUILD_WITH_INSTALL_RPATH TRUE
 )
 
-# 设置节点的头文件路径
 target_include_directories(yolo_detect_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
   ${OpenCV_INCLUDE_DIRS}
 )
 
-# 节点需要链接：刚才编译的库(yolo_detector_lib) + ROS 组件
+# 链接我们自己的库 和 OpenCV
 target_link_libraries(yolo_detect_node
-  yolo_detector_lib   # <--- 链接我们自己写的库
+  yolo_detector_lib
   ${OpenCV_LIBRARIES}
 )
 
-# 添加 ROS 依赖
+# 【修改点 3】在依赖列表中添加 yolo_common
 ament_target_dependencies(yolo_detect_node
-  rclcpp
-  sensor_msgs
-  cv_bridge
-  message_filters
-  image_transport
-  object3d_msgs
-  ament_index_cpp
+  "rclcpp"
+  "sensor_msgs"
+  "cv_bridge"
+  "message_filters"
+  "image_transport"
+  "object3d_msgs"
+  "ament_index_cpp"
+  "yolo_common"   # <--- 加上这个，节点才能使用 visualization.hpp
 )
 
+# =========================================================
 # 4. 安装规则
-# 安装可执行文件
+# =========================================================
 install(TARGETS yolo_detect_node
   DESTINATION lib/${PROJECT_NAME})
 
-# 安装库 (为了规范，虽然这个包不一定给别人用)
 install(TARGETS yolo_detector_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
 
-# 安装头文件
 install(DIRECTORY include/
   DESTINATION include)
 
-# 安装模型文件
 install(DIRECTORY models
   DESTINATION share/${PROJECT_NAME}
 )

@@ -15,8 +15,12 @@
 #include "object3d_msgs/msg/object3_d.hpp"
 #include "object3d_msgs/msg/object3_d_array.hpp"
 
-// Include our new detector library
+// Local Lib
 #include "detect_yolov8_11_cpu/cpu_detect.hpp"
+
+// Yolo Common Lib
+#include "yolo_common/visualization.hpp"
+#include "yolo_common/math_utils.hpp"
 
 using namespace std::chrono_literals;
 
@@ -65,7 +69,6 @@ public:
         RCLCPP_INFO(this->get_logger(), "Initializing CPU_Detect with: %s", final_model_path.c_str());
         
         try {
-            // 初始化探测器类
             detector_ = std::make_unique<CPU_Detect>(final_model_path, conf_thres_);
         } catch (const std::exception& e) {
             RCLCPP_ERROR(this->get_logger(), "Detector init failed: %s", e.what());
@@ -80,7 +83,7 @@ public:
         depth_sub_.subscribe(this, "/camera/realsense_d435i/aligned_depth_to_color/image_raw", qos.get_rmw_qos_profile());
 
         sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(10), color_sub_, depth_sub_);
-        sync_->registerCallback(&YoloDetectNode::sync_callback, this);
+        sync_->registerCallback(std::bind(&YoloDetectNode::sync_callback, this, std::placeholders::_1, std::placeholders::_2));
         sync_->setMaxIntervalDuration(rclcpp::Duration::from_seconds(0.1));
 
         publisher_ = this->create_publisher<object3d_msgs::msg::Object3DArray>("target_points_array", qos);
@@ -104,30 +107,9 @@ private:
         return result;
     }
 
-    float get_robust_depth(const cv::Mat& depth_img, int cx, int cy) {
-        if (cx < 0 || cx >= depth_img.cols || cy < 0 || cy >= depth_img.rows) return -1.0;
-        int x_min = std::max(0, cx - 2);
-        int x_max = std::min(depth_img.cols, cx + 3);
-        int y_min = std::max(0, cy - 2);
-        int y_max = std::min(depth_img.rows, cy + 3);
-
-        std::vector<unsigned short> valid_depths;
-        valid_depths.reserve(25);
-        for (int y = y_min; y < y_max; ++y) {
-            for (int x = x_min; x < x_max; ++x) {
-                unsigned short d = depth_img.at<unsigned short>(y, x);
-                if (d > 0) valid_depths.push_back(d);
-            }
-        }
-        if (valid_depths.empty()) return -1.0;
-        size_t n = valid_depths.size() / 2;
-        std::nth_element(valid_depths.begin(), valid_depths.begin() + n, valid_depths.end());
-        return (float)valid_depths[n];
-    }
-
     void sync_callback(const sensor_msgs::msg::Image::ConstSharedPtr& msg_color, 
                        const sensor_msgs::msg::Image::ConstSharedPtr& msg_depth) {
-        // FPS
+        // FPS Calc
         auto now = std::chrono::steady_clock::now();
         frame_count_++;
         double elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(now - start_time_).count();
@@ -146,54 +128,49 @@ private:
             return;
         }
 
-        if (show_image_) {
-            cv::putText(color_img, cv::format("FPS: %.2f", fps_), cv::Point(10, 30), 
-                        cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
-        }
+        // === 1. 推理 (返回 UnifiedResult) ===
+        // 注意：推理引擎不修改 color_img，也不负责显示
+        auto results = detector_->detect(color_img);
 
-        // === 调用分离出去的推理引擎 ===
-        auto detections = detector_->detect(color_img, show_image_);
-        // ============================
-
-        // 显示逻辑
+        // === 2. 可视化管理 (调用 yolo_common) ===
         if (show_image_) {
-            const std::string win_name = "Detection Result";
-            cv::namedWindow(win_name, cv::WINDOW_NORMAL);
-            cv::setWindowProperty(win_name, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
-            cv::imshow(win_name, color_img);
-            cv::waitKey(1);
+            // ShowWindow 内部有 waitKey(1)，且绘制 FPS 和结果
+            yolo_common::vis::ShowWindow("Detection Result", color_img, results, win_created_flag_, fps_);
         } else {
-            try {
-                if (cv::getWindowProperty("Detection Result", cv::WND_PROP_VISIBLE) >= 0) {
+            // 如果需要关闭窗口
+            if (win_created_flag_) {
+                try {
                     cv::destroyWindow("Detection Result");
-                    cv::waitKey(1);
-                }
-            } catch (...) {}
+                } catch(...) {}
+                win_created_flag_ = false;
+                cv::waitKey(1); // 必须调用，否则窗口不会消失
+            }
         }
 
-        if (publisher_->get_subscription_count() == 0 || detections.empty()) return;
+        if (publisher_->get_subscription_count() == 0 || results.empty()) return;
 
         object3d_msgs::msg::Object3DArray array_msg;
         array_msg.header = msg_color->header;
 
-        for (const auto& det : detections) {
-            float d = get_robust_depth(depth_img, det.center.x, det.center.y);
+        for (auto& res : results) {
+            // 使用 common math 提取深度
+            float d = yolo_common::math::GetRobustDepth(depth_img, res.center);
+            
             if (d <= 0) continue;
 
-            float Z = d / 1000.0f;
-            float X = (det.center.x - cx_) * Z / fx_;
-            float Y = (det.center.y - cy_) * Z / fy_;
+            float Z = d; //GetRobustDepth 已经返回米
+            float X = (res.center.x - cx_) * Z / fx_;
+            float Y = (res.center.y - cy_) * Z / fy_;
 
             object3d_msgs::msg::Object3D obj;
             obj.point.x = X;
             obj.point.y = Y;
             obj.point.z = Z;
-            obj.width_m = (det.box.width * Z) / fx_;
-            obj.height_m = (det.box.height * Z) / fy_;
+            obj.width_m = (res.box.width * Z) / fx_;
+            obj.height_m = (res.box.height * Z) / fy_;
             
-            // 使用辅助函数获取类别名
-            obj.class_name = detector_->getClassName(det.class_id);
-            obj.score = det.confidence;
+            obj.class_name = res.class_name;
+            obj.score = res.score;
 
             array_msg.objects.push_back(obj);
         }
@@ -206,7 +183,7 @@ private:
     double fx_, fy_, cx_, cy_;
     double conf_thres_;
     bool show_image_;
-    std::unique_ptr<CPU_Detect> detector_; // 仅持有指针
+    std::unique_ptr<CPU_Detect> detector_;
     
     message_filters::Subscriber<sensor_msgs::msg::Image> color_sub_;
     message_filters::Subscriber<sensor_msgs::msg::Image> depth_sub_;
@@ -217,12 +194,14 @@ private:
     std::chrono::steady_clock::time_point start_time_ = std::chrono::steady_clock::now();
     int frame_count_ = 0;
     double fps_ = 0.0;
+    
+    // 窗口状态 (供 ShowWindow 使用)
+    bool win_created_flag_ = false;
 };
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<YoloDetectNode>();
-    rclcpp::spin(node);
+    rclcpp::spin(std::make_shared<YoloDetectNode>());
     rclcpp::shutdown();
     return 0;
 }

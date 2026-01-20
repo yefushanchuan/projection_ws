@@ -15,12 +15,9 @@
   <depend>message_filters</depend>
   <depend>image_transport</depend>
   <depend>ament_index_cpp</depend>
-  
-  <!-- 必须包含你的自定义消息包 -->
   <depend>object3d_msgs</depend>
-  
-  <!-- OpenCV -->
   <depend>libopencv-dev</depend>
+  <depend>yolo_common</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
