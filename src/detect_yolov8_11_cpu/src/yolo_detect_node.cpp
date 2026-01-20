@@ -127,7 +127,7 @@ private:
 
     void sync_callback(const sensor_msgs::msg::Image::ConstSharedPtr& msg_color, 
                        const sensor_msgs::msg::Image::ConstSharedPtr& msg_depth) {
-        // FPS
+        // 1. FPS 计算
         auto now = std::chrono::steady_clock::now();
         frame_count_++;
         double elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(now - start_time_).count();
@@ -137,6 +137,7 @@ private:
             start_time_ = now;
         }
 
+        // 2. 转换图像
         cv::Mat color_img, depth_img;
         try {
             color_img = cv_bridge::toCvShare(msg_color, "bgr8")->image;
@@ -146,31 +147,63 @@ private:
             return;
         }
 
-        if (show_image_) {
-            cv::putText(color_img, cv::format("FPS: %.2f", fps_), cv::Point(10, 30), 
+        // 3. 获取原子变量状态
+        bool current_show_image = show_image_.load();
+
+        // 4. 绘制 FPS (只有需要显示才画)
+        if (current_show_image) {
+            // 使用 cv::format 避免 int 强转丢失精度
+            std::string fps_str = cv::format("FPS: %.2f", fps_);
+            cv::putText(color_img, fps_str, cv::Point(20, 50), 
                         cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
         }
 
-        // === 调用分离出去的推理引擎 ===
-        auto detections = detector_->detect(color_img, show_image_);
-        // ============================
+        // 5. 执行推理
+        // 注意：detect 函数内部会根据 current_show_image 决定是否画框
+        auto detections = detector_->detect(color_img, current_show_image);
 
-        // 显示逻辑
-        if (show_image_) {
-            const std::string win_name = "Detection Result";
-            cv::namedWindow(win_name, cv::WINDOW_NORMAL);
-            cv::setWindowProperty(win_name, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
+        // ==========================================
+        // 6. 窗口管理逻辑 (采用了你的优良逻辑)
+        // ==========================================
+        const std::string win_name = "Detection Result";
+
+        if (!current_show_image) {
+            // A. 不需要显示：如果有窗口，销毁它
+            if (window_created_) {
+                try {
+                    cv::destroyWindow(win_name);
+                } catch (...) {}
+                cv::waitKey(1); // 刷新事件，确保窗口关闭
+                window_created_ = false;
+            }
+        } 
+        else {
+            // B. 需要显示
+            
+            // B1. 检查窗口是否被用户手动关闭 (Resurrection Logic)
+            try {
+                if (window_created_ && cv::getWindowProperty(win_name, cv::WND_PROP_VISIBLE) < 1.0) {
+                    window_created_ = false; // 标记为未创建，强制下面的逻辑重建
+                }
+            } catch (...) {
+                window_created_ = false;
+            }
+
+            // B2. 如果没窗口，创建窗口
+            if (!window_created_) {
+                cv::namedWindow(win_name, cv::WINDOW_NORMAL);
+                cv::setWindowProperty(win_name, cv::WND_PROP_FULLSCREEN, cv::WINDOW_FULLSCREEN);
+                window_created_ = true;
+            }
+
+            // B3. 刷新显示
             cv::imshow(win_name, color_img);
             cv::waitKey(1);
-        } else {
-            try {
-                if (cv::getWindowProperty("Detection Result", cv::WND_PROP_VISIBLE) >= 0) {
-                    cv::destroyWindow("Detection Result");
-                    cv::waitKey(1);
-                }
-            } catch (...) {}
         }
+        // ==========================================
 
+
+        // 7. ROS 消息发布逻辑 (独立于显示逻辑，始终运行)
         if (publisher_->get_subscription_count() == 0 || detections.empty()) return;
 
         object3d_msgs::msg::Object3DArray array_msg;
@@ -190,8 +223,6 @@ private:
             obj.point.z = Z;
             obj.width_m = (det.box.width * Z) / fx_;
             obj.height_m = (det.box.height * Z) / fy_;
-            
-            // 使用辅助函数获取类别名
             obj.class_name = detector_->getClassName(det.class_id);
             obj.score = det.confidence;
 
@@ -205,7 +236,8 @@ private:
 
     double fx_, fy_, cx_, cy_;
     double conf_thres_;
-    bool show_image_;
+    std::atomic<bool> show_image_;
+    bool window_created_ = false;
     std::unique_ptr<CPU_Detect> detector_; // 仅持有指针
     
     message_filters::Subscriber<sensor_msgs::msg::Image> color_sub_;
