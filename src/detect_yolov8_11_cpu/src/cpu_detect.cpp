@@ -2,26 +2,15 @@
 #include <cmath>
 #include <iostream>
 #include <algorithm>
-
-// 初始化列表
-static const std::vector<std::string> COCO_CLASSES = {
-    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
-    "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-    "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-    "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
-    "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-    "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-    "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
-    "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
-    "hair drier", "toothbrush"
-};
+#include "yolo_common/class_names.hpp"
+#include "yolo_common/img_proc.hpp"
 
 CPU_Detect::CPU_Detect(const std::string& model_path, float conf_thres, float iou_thres)
     : env_(ORT_LOGGING_LEVEL_WARNING, "Yolo11"), 
       session_options_(), 
       conf_threshold_(conf_thres), 
       iou_threshold_(iou_thres),
-      class_names_(COCO_CLASSES)
+      class_names_(yolo_common::COCO_CLASSES)
 {
     session_options_.SetIntraOpNumThreads(4);
     session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -50,19 +39,13 @@ CPU_Detect::CPU_Detect(const std::string& model_path, float conf_thres, float io
 std::vector<yolo_common::UnifiedResult> CPU_Detect::detect(const cv::Mat& img) {
     // 1. 预处理 (Letterbox)
     cv::Mat input_img;
-    float ratio = std::min((float)input_w_ / img.cols, (float)input_h_ / img.rows);
-    int new_w = std::round(img.cols * ratio);
-    int new_h = std::round(img.rows * ratio);
-    int dw = (input_w_ - new_w) / 2;
-    int dh = (input_h_ - new_h) / 2;
-
-    cv::resize(img, input_img, cv::Size(new_w, new_h));
-    cv::copyMakeBorder(input_img, input_img, dh, input_h_ - new_h - dh, 
-                       dw, input_w_ - new_w - dw, 
-                       cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
+    int pad_w, pad_h;
+    // 调用公共库，不再手动计算 resize 和 copyMakeBorder
+    float ratio = yolo_common::proc::Letterbox(img, input_img, input_w_, input_h_, pad_w, pad_h);
 
     cv::Mat blob;
-    cv::dnn::blobFromImage(input_img, blob, 1.0 / 255.0, cv::Size(input_w_, input_h_), cv::Scalar(0, 0, 0), true, false);
+    // 注意：OpenCV DNN 需要将 BGR 转 RGB (swapRB=true)，且归一化
+    cv::dnn::blobFromImage(input_img, blob, 1.0 / 255.0, cv::Size(), cv::Scalar(0, 0, 0), true, false);
 
     // 2. 推理
     std::vector<int64_t> input_dims = {1, 3, input_h_, input_w_};
@@ -114,8 +97,8 @@ std::vector<yolo_common::UnifiedResult> CPU_Detect::detect(const cv::Mat& img) {
             float h  = output_data[3 * rows + i];
 
             // Restore coordinates
-            float x = (cx - w / 2 - dw) / ratio;
-            float y = (cy - h / 2 - dh) / ratio;
+            float x = (cx - w / 2 - pad_w) / ratio;
+            float y = (cy - h / 2 - pad_h) / ratio;
             float w_orig = w / ratio;
             float h_orig = h / ratio;
 

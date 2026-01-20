@@ -1,18 +1,10 @@
 #include "segment_yolov8_11_bpu/bpu_seg_dnn.hpp"
 #include "yolo_common/math_utils.hpp" // 引入数学库
+#include "yolo_common/class_names.hpp"
+#include "yolo_common/img_proc.hpp"
 
 BPU_Segment::BPU_Segment() {
-    config_.class_names = {
-        "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
-        "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-        "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-        "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
-        "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-        "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-        "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
-        "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
-        "hair drier", "toothbrush"
-    };
+    config_.class_names = yolo_common::COCO_CLASSES;
     config_.class_num = config_.class_names.size();
 }
 
@@ -32,29 +24,9 @@ void BPU_Segment::BGRToNV12(const cv::Mat& bgr, cv::Mat& nv12) {
     }
 }
 
-void BPU_Segment::Letterbox(const cv::Mat& src, int target_w, int target_h, cv::Mat& dst) {
-    int in_w = src.cols;
-    int in_h = src.rows;
-    float scale = std::min((float)target_w / in_w, (float)target_h / in_h);
-    
-    int new_w = std::round(in_w * scale);
-    int new_h = std::round(in_h * scale);
-    
-    ratio_ = scale;
-    pad_w_ = (target_w - new_w) / 2;
-    pad_h_ = (target_h - new_h) / 2;
-
-    cv::Mat resized;
-    cv::resize(src, resized, cv::Size(new_w, new_h));
-    
-    cv::copyMakeBorder(resized, dst, pad_h_, target_h - new_h - pad_h_, 
-                       pad_w_, target_w - new_w - pad_w_, 
-                       cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
-}
-
 void BPU_Segment::PreProcess(const cv::Mat& bgr_img, int model_w, int model_h, cv::Mat& nv12_out) {
     cv::Mat letterboxed;
-    Letterbox(bgr_img, model_w, model_h, letterboxed);
+    ratio_ = yolo_common::proc::Letterbox(bgr_img, letterboxed, model_w, model_h, pad_w_, pad_h_);
     BGRToNV12(letterboxed, nv12_out);
 }
 

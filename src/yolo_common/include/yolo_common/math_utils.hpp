@@ -59,5 +59,13 @@ inline float GetRobustDepth(const cv::Mat& depth_img, const cv::Point2f& pt) {
     return static_cast<float>(valid_depths[n]) / 1000.0f;
 }
 
+// --- 像素坐标反投影到 3D 点 ---
+inline cv::Point3f ProjectPixelTo3D(float u, float v, float z_m, 
+                                    double fx, double fy, double cx, double cy) {
+    float x_m = (u - (float)cx) * z_m / (float)fx;
+    float y_m = (v - (float)cy) * z_m / (float)fy;
+    return cv::Point3f(x_m, y_m, z_m);
+}
+
 } // namespace math
 } // namespace yolo_common

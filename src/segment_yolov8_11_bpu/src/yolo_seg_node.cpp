@@ -4,9 +4,7 @@
 #include "dnn_node/dnn_node.h"
 #include "dnn_node/util/image_proc.h"
 #include <chrono>
-#include <fstream>
 #include <ament_index_cpp/get_package_share_directory.hpp>
-#include "object3d_msgs/msg/object3_d.hpp"
 #include "object3d_msgs/msg/object3_d_array.hpp"
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
@@ -17,6 +15,7 @@
 // 引入 yolo_common 头文件
 #include "yolo_common/visualization.hpp"
 #include "yolo_common/math_utils.hpp"
+#include "yolo_common/ros_utils.hpp" 
 
 using hobot::dnn_node::DNNInput;
 using hobot::dnn_node::DnnNodeOutput;
@@ -36,10 +35,11 @@ public:
         this->declare_parameter("camera.cx", 663.4498);
         this->declare_parameter("camera.cy", 366.7621);
 
-        this->get_parameter("camera.fx", fx_);
-        this->get_parameter("camera.fy", fy_);
-        this->get_parameter("camera.cx", cx_);
-        this->get_parameter("camera.cy", cy_);
+        // 使用结构体统一管理内参
+        cam_param_.fx = this->get_parameter("camera.fx").as_double();
+        cam_param_.fy = this->get_parameter("camera.fy").as_double();
+        cam_param_.cx = this->get_parameter("camera.cx").as_double();
+        cam_param_.cy = this->get_parameter("camera.cy").as_double();
 
         // 2. 路径解析
         std::string model_param = this->get_parameter("model_filename").as_string();
@@ -67,11 +67,11 @@ public:
         segmenter_ = std::make_shared<BPU_Segment>();
 
         this->get_parameter("show_image", show_img_);
-        this->get_parameter("conf_thres", conf_thres_);
-        this->get_parameter("nms_thres", nms_thres_);
+        double conf = this->get_parameter("conf_thres").as_double();
+        double nms = this->get_parameter("nms_thres").as_double();
         
-        segmenter_->config_.conf_thres = (float)conf_thres_;
-        segmenter_->config_.nms_thres = (float)nms_thres_;
+        segmenter_->config_.conf_thres = (float)conf;
+        segmenter_->config_.nms_thres = (float)nms;
 
         callback_handle_ = this->add_on_set_parameters_callback(
             std::bind(&YoloSegNode::parameter_callback, this, std::placeholders::_1));
@@ -87,13 +87,9 @@ public:
         sync_->registerCallback(std::bind(&YoloSegNode::SyncCallback, this, std::placeholders::_1, std::placeholders::_2));
 
         pub_ = this->create_publisher<object3d_msgs::msg::Object3DArray>("target_points_array", qos);
-        last_calc_time_ = std::chrono::steady_clock::now();
-        last_log_time_ = std::chrono::steady_clock::now();
     }
 
-    ~YoloSegNode() override {
-        // 不需要手动 destroyAllWindows，OS 或 vis 库会处理
-    }
+    ~YoloSegNode() override {}
 
 protected:
     int SetNodePara() override {
@@ -109,27 +105,31 @@ protected:
         auto seg_output = std::dynamic_pointer_cast<YoloSegOutput>(node_output);
         if (!seg_output || !seg_output->src_img || !seg_output->depth_img) return -1;
 
-        UpdateFPS(show_img_);
+        // 1. FPS 监控 (工具类)
+        fps_monitor_.Tick();
 
-        // 1. 算法处理 (返回 UnifiedResult)
+        // 2. 算法处理 (返回 UnifiedResult)
         std::vector<yolo_common::UnifiedResult> results;
         segmenter_->PostProcess(node_output->output_tensors, model_input_h_, model_input_w_, results);
 
-        // 2. 深度提取与发布
-        PublishSegMessage(results, seg_output->msg_header, *(seg_output->depth_img));
+        // 3. 深度提取与发布 (一行代码搞定)
+        if (pub_->get_subscription_count() > 0) {
+            object3d_msgs::msg::Object3DArray msg;
+            // 注意：BPU 代码里 seg_output->depth_img 是指针，需要解引用
+            yolo_common::ros_utils::ResultsTo3DMessage(
+                results, *(seg_output->depth_img), *(seg_output->msg_header), cam_param_, msg
+            );
+            pub_->publish(msg);
+        }
 
-        // 3. 可视化 (调用 yolo_common)
+        // 4. 可视化
         if (show_img_) {
-            yolo_common::vis::ShowWindow("BPU Segment", *(seg_output->src_img), results, win_created_flag_, fps_);
-        } else {
-             // 如果关闭显示，需要清理窗口，yolo_common::vis 没有提供关闭接口，
-             // 但 ShowWindow 内部有逻辑，如果不调用它，窗口自然不会刷新。
-             // 如果需要显式关闭，可以在这里判断 win_created_flag_ 并 destroyWindow
-             if (win_created_flag_) {
-                cv::destroyWindow("BPU Segment");
-                win_created_flag_ = false;
-                cv::waitKey(1);
-             }
+            yolo_common::vis::ShowWindow("BPU Segment", *(seg_output->src_img), results, win_created_flag_, fps_monitor_.Get());
+        } else if (win_created_flag_) {
+            // 参数动态关闭显示时，销毁窗口
+            cv::destroyWindow("BPU Segment");
+            win_created_flag_ = false;
+            cv::waitKey(1);
         }
 
         return 0;
@@ -139,8 +139,11 @@ private:
     std::string resolved_model_path_;
     int model_input_w_, model_input_h_;
     bool show_img_; 
-    double conf_thres_, nms_thres_;
-    double fx_, fy_, cx_, cy_;
+    
+    // 使用公共结构体
+    yolo_common::ros_utils::CameraIntrinsics cam_param_;
+    // 使用公共FPS监控
+    yolo_common::utils::FpsMonitor fps_monitor_;
 
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> SyncPolicy;
     message_filters::Subscriber<sensor_msgs::msg::Image> sub_color_filter_;
@@ -151,54 +154,10 @@ private:
     OnSetParametersCallbackHandle::SharedPtr callback_handle_;
     std::shared_ptr<BPU_Segment> segmenter_;
 
-    std::chrono::steady_clock::time_point last_calc_time_, last_log_time_;
-    int frame_count_ = 0;
-    double fps_ = 0.0;
-    bool win_created_flag_ = false; // 用于 ShowWindow
-
-    void PublishSegMessage(const std::vector<yolo_common::UnifiedResult>& results, 
-                           const std::shared_ptr<std_msgs::msg::Header>& header,
-                           const cv::Mat& depth_mat) {
-        
-        if (pub_->get_subscription_count() == 0) return;
-
-        object3d_msgs::msg::Object3DArray msg;
-        msg.header = *header;
-
-        for (const auto& res : results) {
-            // 使用 yolo_common::math::GetRobustDepth
-            // 注意：res.center 对应之前的 mic_center
-            float z_m = yolo_common::math::GetRobustDepth(depth_mat, res.center);
-            
-            if (z_m <= 0.0f) continue; 
-
-            float u = res.center.x;
-            float v = res.center.y;
-            float x_m = (u - cx_) * z_m / fx_;
-            float y_m = (v - cy_) * z_m / fy_;
-
-            float radius_m = (res.mic_radius * z_m) / fx_;
-            
-            object3d_msgs::msg::Object3D obj;
-            obj.class_name = res.class_name;
-            obj.score = res.score;
-            obj.point.x = x_m;
-            obj.point.y = y_m;
-            obj.point.z = z_m;
-            obj.width_m = radius_m * 2.0f;
-            obj.height_m = radius_m * 2.0f;
-
-            msg.objects.push_back(obj);
-        }
-
-        if (!msg.objects.empty()) {
-            pub_->publish(msg);
-        }
-    }
+    bool win_created_flag_ = false; 
 
     rcl_interfaces::msg::SetParametersResult parameter_callback(
         const std::vector<rclcpp::Parameter> &params) {
-        // ... (参数回调逻辑保持不变)
         rcl_interfaces::msg::SetParametersResult result;
         result.successful = true;
         result.reason = "success";
@@ -214,26 +173,9 @@ private:
         return result;
     }
 
-    void UpdateFPS(bool show_img) {
-        auto now = std::chrono::steady_clock::now();
-        frame_count_++;
-        auto calc_dur = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_calc_time_).count();
-        if (calc_dur >= 1000) { 
-            fps_ = frame_count_ * 1000.0 / calc_dur;
-            frame_count_ = 0;
-            last_calc_time_ = now;
-        }
-        if (!show_img) {
-            auto log_dur = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_log_time_).count();
-            if (log_dur >= 5000) { 
-                RCLCPP_INFO(this->get_logger(), "FPS: %.2f", fps_);
-                last_log_time_ = now;
-            }
-        }
-    }
-
     void SyncCallback(const sensor_msgs::msg::Image::ConstSharedPtr& msg_color, 
                       const sensor_msgs::msg::Image::ConstSharedPtr& msg_depth) {
+        // ... (保持不变，省略 try-catch 细节) ...
         cv::Mat img_color, img_depth;
         try {
             img_color = cv_bridge::toCvShare(msg_color, "bgr8")->image.clone();

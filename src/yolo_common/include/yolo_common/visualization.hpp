@@ -2,6 +2,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include "types.hpp"
+#include <chrono>
 
 namespace yolo_common {
 namespace vis {
@@ -104,4 +105,30 @@ inline void ShowWindow(const std::string& win_name, const cv::Mat& img,
 }
 
 } // namespace vis
+
+namespace utils {
+
+class FpsMonitor {
+public:
+    void Tick() {
+        frame_count_++;
+        auto now = std::chrono::steady_clock::now();
+        auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_time_).count();
+        if (dur >= 1000) {
+            fps_ = frame_count_ * 1000.0 / dur;
+            frame_count_ = 0;
+            last_time_ = now;
+        }
+    }
+
+    double Get() const { return fps_; }
+
+private:
+    std::chrono::steady_clock::time_point last_time_ = std::chrono::steady_clock::now();
+    int frame_count_ = 0;
+    double fps_ = 0.0;
+};
+
+} // namespace utils
+
 } // namespace yolo_common
