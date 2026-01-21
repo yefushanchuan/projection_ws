@@ -80,7 +80,7 @@ def show_window(win_name, img, results, window_created_dict, fps=0.0):
         draw_result(draw_img, res)
         
     if fps > 0:
-        cv2.putText(draw_img, f"FPS: {int(fps)}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+        cv2.putText(draw_img, f"FPS: {fps:.2f}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
         
     # 窗口复活逻辑
     created = window_created_dict.get('created', False)
