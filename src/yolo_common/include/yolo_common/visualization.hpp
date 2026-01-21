@@ -75,7 +75,7 @@ inline void ShowWindow(const std::string& win_name, const cv::Mat& img,
     }
     
     if (fps > 0) {
-        cv::putText(draw_img, "FPS: " + cv::format("FPS: %.2f", fps), 
+        cv::putText(draw_img, cv::format("FPS: %.2f", fps), 
                     cv::Point(20, 50), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
     }
 

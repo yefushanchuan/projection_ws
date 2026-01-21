@@ -1,5 +1,5 @@
 #include "segment_yolov8_11_bpu/bpu_seg_dnn.hpp"
-#include "yolo_common/math_utils.hpp" // 引入数学库
+#include "yolo_common/math_utils.hpp"
 #include "yolo_common/class_names.hpp"
 #include "yolo_common/img_proc.hpp"
 
