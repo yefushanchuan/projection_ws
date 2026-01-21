@@ -14,4 +14,10 @@ namespace yolo_common {
         "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
         "hair drier", "toothbrush"
     };
+    static const std::vector<std::string> RICE_CLASSES = {
+        "grain"
+    };
+    static const std::vector<std::string> WEED_CLASSES = {
+        "weed", "weedroot", "soybean", "maize"
+    };
 }

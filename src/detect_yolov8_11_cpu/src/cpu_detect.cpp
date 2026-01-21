@@ -8,7 +8,7 @@ CPU_Detect::CPU_Detect(const std::string& model_path)
       session_options_()
 {
     // 1. 初始化默认配置 (对齐 BPU)
-    config_.class_names = yolo_common::COCO_CLASSES;
+    config_.class_names = yolo_common::WEED_CLASSES;
     config_.class_num = config_.class_names.size();
     config_.conf_thres = 0.5f;
     config_.iou_thres = 0.45f;
