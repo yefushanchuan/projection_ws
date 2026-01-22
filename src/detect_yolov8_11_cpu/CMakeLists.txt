@@ -68,6 +68,12 @@ target_link_libraries(yolo_detect_node
   ${ONNXRUNTIME_LIBRARIES}
 )
 
+# 设置 RPATH 防止运行时找不到 ONNX 库
+set_target_properties(yolo_detect_node PROPERTIES
+  INSTALL_RPATH "${ONNX_INSTALL_PATH}/lib"
+  BUILD_WITH_INSTALL_RPATH TRUE
+)
+
 # =========================================================
 # 6. 安装规则
 # =========================================================

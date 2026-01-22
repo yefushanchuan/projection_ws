@@ -17,8 +17,9 @@ add_executable(image_viewer_talker src/image_viewer_talker.cpp)
 
 target_include_directories(image_viewer_talker PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-target_compile_features(image_viewer_talker PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+  ${OpenCV_INCLUDE_DIRS}
+)
+
 ament_target_dependencies(
   image_viewer_talker
   "rclcpp"
@@ -27,7 +28,7 @@ ament_target_dependencies(
   "object3d_msgs"
 )
 
-target_link_libraries(image_viewer_talker ${OpenCV_LIBS})
+target_link_libraries(image_viewer_talker ${OpenCV_LIBRARIES})
 
 install(TARGETS image_viewer_talker
   DESTINATION lib/${PROJECT_NAME})

@@ -156,24 +156,29 @@ void MainWindow::onStartClicked()
     QString class_str = le_class_path->text().trimmed();
 
     // 3. 构造脚本
-    QString script = QString("ros2 launch cpp_launch system_launch.py " 
-                             "show_image:=%1 "
-                             "x_offset:=%2 "
-                             "y_offset:=%3 "
-                             "z_offset:=%4 ")
-                             .arg(show_img_val, x_val, y_val, z_val);
+    QStringList cmdArgs;
+    cmdArgs << "launch" << "cpp_launch" << "system_launch.py";
 
+    // 基础参数 (ros2 launch 参数格式为 key:=value)
+    cmdArgs << QString("show_image:=%1").arg(show_img_val);
+    cmdArgs << QString("x_offset:=%1").arg(x_val);
+    cmdArgs << QString("y_offset:=%1").arg(y_val);
+    cmdArgs << QString("z_offset:=%1").arg(z_val);
+
+    // 动态参数
     if (!model_str.isEmpty()) {
-        script += QString("model_filename:='%1' ").arg(model_str);
+        // 注意：这里不需要在路径两边加单引号 ''，QProcess 会自动处理路径中的空格
+        cmdArgs << QString("model_filename:=%1").arg(model_str);
     }
     if (!class_str.isEmpty()) {
-        script += QString("class_labels_file:='%1' ").arg(class_str);
+        cmdArgs << QString("class_labels_file:=%1").arg(class_str);
     }
 
-    qDebug() << "Executing:" << script;
+    qDebug() << "Executing: ros2" << cmdArgs.join(" ");
 
-    // 4. 执行
-    launch_process->start("bash", QStringList() << "-c" << script);
+    // 4. 执行 (直接运行 ros2 命令)
+    // 注意：前提是运行这个 Qt 程序的终端已经 source 过 ROS 环境
+    launch_process->start("ros2", cmdArgs);
 
     // 5. 等待启动
     if (launch_process->waitForStarted(2000)) {
@@ -259,7 +264,7 @@ void MainWindow::setupUi() {
     layModel->addWidget(new QLabel("模型文件:"));
 
     le_model_path = new QLineEdit();
-    le_model_path->setPlaceholderText("默认:yolov5x_tag_v7.0_detect_640x640_bayese_nv12.bin");
+    le_model_path->setPlaceholderText("默认: yolov5x_tag_v7.0_detect_640x640_bayese_nv12.bin");
     le_model_path->setReadOnly(true); 
     le_model_path->setToolTip("点击“浏览”选择文件");
     layModel->addWidget(le_model_path);
@@ -282,7 +287,7 @@ void MainWindow::setupUi() {
     layClass->addWidget(new QLabel("类别文件:"));
 
     le_class_path = new QLineEdit();
-    le_class_path->setPlaceholderText("默认:COCO 80类(仅CPU推理支持更换类别文件)");
+    le_class_path->setPlaceholderText("默认: COCO 80类(仅CPU推理支持更换类别文件)");
     le_class_path->setReadOnly(true); 
     le_class_path->setToolTip("选择 .names 或 .txt 文件，仅CPU推理支持更换类别文件");
     layClass->addWidget(le_class_path);

@@ -106,7 +106,7 @@ class YoloDetectNode(Node):
             return
 
         self.get_logger().info(f"Loading model: {model_path}")
-        self.detector = BPU_Detect(model_path, self.labelname, conf=conf_val, iou=nms_val, is_save=False)
+        self.detector = BPU_Detect(model_path, self.labelname, conf=conf_val, iou=nms_val)
         self.add_on_set_parameters_callback(self.parameter_callback)
         self.get_logger().info("YOLOv5 BPU Node Initialized.")
 

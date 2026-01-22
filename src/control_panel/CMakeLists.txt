@@ -39,7 +39,6 @@ add_executable(control_panel_node
 target_include_directories(control_panel_node
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
 )
 
 # --- 6. 链接库 ---
@@ -58,10 +57,6 @@ ament_target_dependencies(control_panel_node
 # --- 7. 安装 ---
 install(TARGETS control_panel_node
   DESTINATION lib/${PROJECT_NAME}
-)
-
-install(DIRECTORY include/
-  DESTINATION include
 )
 
 if(BUILD_TESTING)

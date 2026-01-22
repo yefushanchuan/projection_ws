@@ -14,8 +14,8 @@ add_executable(transform_node src/transform_node.cpp)
 
 ament_target_dependencies(
   transform_node
-  "rclcpp"
-  "object3d_msgs"
+  rclcpp
+  object3d_msgs
 )
 
 install(TARGETS

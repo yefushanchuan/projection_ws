@@ -98,7 +98,7 @@ def generate_launch_description():
     setup_script = """
         echo "[Launch] Step 1: Waiting for RealSense node..."
         # 1. 死循环等待节点出现
-        until ros2 node list | grep -q "/camera/realsense_d435i"; do
+        until ros2 node list | grep "/camera/realsense_d435i" > /dev/null; do
             sleep 1
             echo "[Launch] Waiting for camera node..."
         done
