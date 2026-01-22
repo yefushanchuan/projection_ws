@@ -41,6 +41,32 @@ MainWindow::~MainWindow() {
     forceCleanUp(false); 
 }
 
+QString MainWindow::getWorkspacePath(const std::string& subdir) {
+    try {
+        // 1. 获取当前包 (control_panel) 的 share 路径
+        std::filesystem::path p(ament_index_cpp::get_package_share_directory("control_panel"));
+
+        // 2. 向上查找直到找到 'install' 目录
+        // 逻辑：share -> install
+        while (p.has_parent_path() && p.filename() != "install") {
+            p = p.parent_path();
+        }
+
+        // 3. 如果找到了 install，它的上一级就是 workspace
+        if (p.filename() == "install") {
+            std::filesystem::path ws_root = p.parent_path();
+            std::filesystem::path target_path = ws_root / subdir; // 拼接 models 或 configs
+            
+            return QString::fromStdString(target_path.string());
+        }
+    } catch (const std::exception& e) {
+        qWarning() << "Error finding workspace path:" << e.what();
+    }
+
+    // 4. 兜底：如果找不到，默认返回 Home 目录
+    return QDir::homePath();
+}
+
 void MainWindow::destroyWorker() {
     if(ros_worker) {
         // 告诉 ROS 停止 spin
@@ -127,6 +153,7 @@ void MainWindow::onStartClicked()
     QString y_val = QString::number(spin_y->value(), 'f', 2);
     QString z_val = QString::number(spin_z->value(), 'f', 2);
     QString model_str = le_model_path->text().trimmed();
+    QString class_str = le_class_path->text().trimmed();
 
     // 3. 构造脚本
     QString script = QString("ros2 launch cpp_launch system_launch.py " 
@@ -137,9 +164,12 @@ void MainWindow::onStartClicked()
                              .arg(show_img_val, x_val, y_val, z_val);
 
     if (!model_str.isEmpty()) {
-        script += QString("model_filename:='%1'").arg(model_str);
+        script += QString("model_filename:='%1' ").arg(model_str);
     }
-    
+    if (!class_str.isEmpty()) {
+        script += QString("class_labels_file:='%1' ").arg(class_str);
+    }
+
     qDebug() << "Executing:" << script;
 
     // 4. 执行
@@ -153,7 +183,9 @@ void MainWindow::onStartClicked()
         
         le_model_path->setEnabled(false);
         btn_browse->setEnabled(false);
-        
+        le_class_path->setEnabled(false);
+        btn_browse_class->setEnabled(false);
+
         statusLabel->setText("系统运行正常");
 
         if(ros_worker) {
@@ -198,7 +230,9 @@ void MainWindow::onStopClicked()
     
     le_model_path->setEnabled(true);
     btn_browse->setEnabled(true);
-    
+    le_class_path->setEnabled(true);
+    btn_browse_class->setEnabled(true);
+
     statusLabel->setText("系统已停止");
 
     qDebug() << "系统清理完毕"; 
@@ -233,8 +267,9 @@ void MainWindow::setupUi() {
     btn_browse = new QPushButton("浏览...");
     btn_browse->setMaximumWidth(50); 
     connect(btn_browse, &QPushButton::clicked, [this](){
+        QString defaultDir = getWorkspacePath("models");
         QString fileName = QFileDialog::getOpenFileName(
-            this, "选择模型文件", "/home/sunrise", "Model Files (*.bin *.onnx);;All Files (*)"
+            this, "选择模型文件", defaultDir, "Model Files (*.bin *.onnx);;All Files (*)"
         );
         if (!fileName.isEmpty()) {
             le_model_path->setText(fileName);
@@ -242,6 +277,30 @@ void MainWindow::setupUi() {
     });
     layModel->addWidget(btn_browse);
     layLaunch->addLayout(layModel);
+
+    QHBoxLayout *layClass = new QHBoxLayout();
+    layClass->addWidget(new QLabel("类别文件:"));
+
+    le_class_path = new QLineEdit();
+    le_class_path->setPlaceholderText("默认 (COCO 80类)(仅CPU推理支持更换类别文件)");
+    le_class_path->setReadOnly(true); 
+    le_class_path->setToolTip("选择 .names 或 .txt 文件，为空则使用默认 COCO");
+    layClass->addWidget(le_class_path);
+
+    btn_browse_class = new QPushButton("浏览...");
+    btn_browse_class->setMaximumWidth(50);
+    connect(btn_browse_class, &QPushButton::clicked, [this](){
+        QString defaultDir = getWorkspacePath("configs");
+        QString fileName = QFileDialog::getOpenFileName(
+            this, "选择类别文件", defaultDir, 
+            "Class Files (*.names *.txt);;All (*)"
+        );
+        if (!fileName.isEmpty()) {
+            le_class_path->setText(fileName);
+        }
+    });
+    layClass->addWidget(btn_browse_class);
+    layLaunch->addLayout(layClass);
 
     // 2. 按钮区
     QHBoxLayout *layActions = new QHBoxLayout();

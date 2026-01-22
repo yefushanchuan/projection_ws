@@ -16,6 +16,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(Qt5 REQUIRED COMPONENTS Widgets Core Gui)
+find_package(ament_index_cpp REQUIRED)
 
 # --- 3. 开启 Qt MOC 自动化 ---
 # 这会自动处理 Q_OBJECT 宏
@@ -48,7 +49,11 @@ target_link_libraries(control_panel_node
   Qt5::Gui
 )
 
-ament_target_dependencies(control_panel_node rclcpp std_msgs)
+ament_target_dependencies(control_panel_node
+  rclcpp
+  std_msgs
+  ament_index_cpp
+)
 
 # --- 7. 安装 ---
 install(TARGETS control_panel_node

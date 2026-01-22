@@ -19,8 +19,9 @@
 #include <QMessageBox>
 #include <QCloseEvent>
 #include <QApplication>
+#include <filesystem>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 
-#include <rclcpp/rclcpp.hpp>
 #include "control_panel/rosworker.h"
 
 class MainWindow : public QMainWindow
@@ -61,6 +62,10 @@ private:
     
     QLineEdit *le_model_path;
     QPushButton *btn_browse;
+    QLineEdit *le_class_path;
+    QPushButton *btn_browse_class;
+
+    QString getWorkspacePath(const std::string& subdir);
 };
 
 #endif // MAINWINDOW_H
