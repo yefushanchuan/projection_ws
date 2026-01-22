@@ -11,6 +11,7 @@ from rcl_interfaces.msg import SetParametersResult
 from object3d_msgs.msg import Object3D, Object3DArray
 from rclpy.qos import qos_profile_sensor_data
 import message_filters
+from pathlib import Path
 
 # 导入我们的新模块
 from detect_yolov5_bpu.bpu_detect_hobot_dnn import BPU_Detect
@@ -26,6 +27,7 @@ class YoloDetectNode(Node):
         self.declare_parameter('camera.cx', 663.4498)
         self.declare_parameter('camera.cy', 366.7621)
         self.declare_parameter('conf_thres', 0.50)
+        self.declare_parameter('nms_thres', 0.45)
         self.declare_parameter('show_image', True)
         self.declare_parameter('model_filename', 'yolov5x_tag_v7.0_detect_640x640_bayese_nv12.bin')
         
@@ -36,6 +38,7 @@ class YoloDetectNode(Node):
         self.cy = self.get_parameter('camera.cy').value
         self.show_image_flag = self.get_parameter('show_image').value
         conf_val = self.get_parameter('conf_thres').value
+        nms_val = self.get_parameter('nms_thres').value
         model_filename = self.get_parameter('model_filename').value
 
         self.win_state = {'created': False} 
@@ -80,14 +83,30 @@ class YoloDetectNode(Node):
             model_path = model_filename
         else:
             try:
-                pkg_path = get_package_share_directory('detect_yolov5_bpu')
-                model_path = os.path.join(pkg_path, 'models', model_filename)
-            except:
-                self.get_logger().error("Model path error")
+                # 1. 获取包路径并转为 Path 对象
+                p = Path(get_package_share_directory('detect_yolov5_bpu'))
+                
+                # 2. 向上查找直到找到 'install' 目录
+                while p.name != 'install' and p != p.parent:
+                    p = p.parent
+                
+                # 3. 拼接 workspace/models 路径
+                if p.name == 'install':
+                    model_path = str(p.parent / 'models' / model_filename)
+                else:
+                    self.get_logger().error("Failed to locate 'install' directory.")
+                    return
+            except Exception as e:
+                self.get_logger().error(f"Path error: {e}")
                 return
 
-        self.get_logger().info(f"Loading model from {model_path} ...")
-        self.detector = BPU_Detect(model_path, self.labelname, conf=conf_val)
+        # 检查与加载
+        if not os.path.exists(model_path):
+            self.get_logger().error(f"[Error] Model not found: {model_path}")
+            return
+
+        self.get_logger().info(f"Loading model: {model_path}")
+        self.detector = BPU_Detect(model_path, self.labelname, conf=conf_val, iou=nms_val, is_save=False)
         self.add_on_set_parameters_callback(self.parameter_callback)
         self.get_logger().info("YOLOv5 BPU Node Initialized.")
 
