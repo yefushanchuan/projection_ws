@@ -14,7 +14,8 @@ CPU_Detect::CPU_Detect(const std::string& model_path)
     config_.iou_thres = 0.45f;
 
     // 2. 初始化 Session
-    session_options_.SetIntraOpNumThreads(4);
+    session_options_.SetIntraOpNumThreads(8);
+    session_options_.SetInterOpNumThreads(1);
     session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
     try {
