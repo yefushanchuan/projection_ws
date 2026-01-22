@@ -359,9 +359,9 @@ void MainWindow::setupUi() {
             });
     };
 
-    createRow("X Offset (正即相机在右):", "x_offset", 0.01, spin_x);
-    createRow("Y Offset (正即相机在下):", "y_offset", -0.06, spin_y);
-    createRow("Z Offset (正即相机在前):", "z_offset", -0.05, spin_z);
+    createRow("X Offset (正即相机在投影仪右):", "x_offset", 0.01, spin_x);
+    createRow("Y Offset (正即相机在投影仪下):", "y_offset", -0.06, spin_y);
+    createRow("Z Offset (正即相机在投影仪前):", "z_offset", -0.05, spin_z);
 
     mainLayout->addWidget(grpParam);
 }
