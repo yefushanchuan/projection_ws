@@ -133,7 +133,6 @@ def generate_launch_description():
     # 这里放所有的算法节点：detect, transform, viewer
     algorithm_nodes = GroupAction(
         actions=[
-            LogInfo(msg=PythonExpression(["'[Launch] Model File: ', '", model_filename, "'"])),
             LogInfo(msg="[Launch] Mode: ONNX Mode Activated!", condition=IfCondition(is_onnx_model)),
             LogInfo(msg="[Launch] Mode: BPU Segment Mode Activated!", condition=IfCondition(is_bpu_seg_model)),
             LogInfo(msg="[Launch] Mode: BPU Detect Mode Activated!", condition=IfCondition(is_bpu_detect_model)),
