@@ -22,11 +22,7 @@ find_package(yolo_common REQUIRED)
 # =========================================================================
 # 2. TROS/BPU Library Paths
 # =========================================================================
-if(DEFINED ENV{TROS_DISTRO})
-    set(TROS_PATH /opt/tros/humble)
-else()
-    set(TROS_PATH /opt/tros/humble)
-endif()
+set(TROS_PATH /opt/tros/humble)
 
 link_directories(
   ${TROS_PATH}/lib/
@@ -49,9 +45,7 @@ add_executable(yolo_seg_node
 # =========================================================================
 target_include_directories(yolo_seg_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
   ${OpenCV_INCLUDE_DIRS}
-  ${RAPIDJSON_INCLUDE_DIRS}
 )
 
 # =========================================================================
@@ -78,17 +72,5 @@ target_link_libraries(yolo_seg_node
 # 6.1 安装可执行文件
 install(TARGETS yolo_seg_node
   DESTINATION lib/${PROJECT_NAME})
-
-# 6.2 安装头文件 (如果有对外暴露的)
-install(DIRECTORY include/
-  DESTINATION include/${PROJECT_NAME}
-)
-
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  set(ament_cmake_copyright_FOUND TRUE)
-  set(ament_cmake_cpplint_FOUND TRUE)
-  ament_lint_auto_find_test_dependencies()
-endif()
 
 ament_package()

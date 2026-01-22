@@ -20,7 +20,7 @@ find_package(OpenCV REQUIRED)
 find_package(yolo_common REQUIRED)
 
 # =========================================================
-# ARM 架构下手动指定 ONNX Runtime
+# 2. ONNX Runtime 设置
 # =========================================================
 set(ONNX_INSTALL_PATH "/opt/onnxruntime")
 set(ONNXRUNTIME_INCLUDE_DIRS "${ONNX_INSTALL_PATH}/include")
@@ -33,48 +33,25 @@ else()
 endif()
 
 # =========================================================
-# 2. 编译推理引擎库 (Lib)
+# 3. 编译可执行文件
 # =========================================================
-add_library(yolo_detector_lib src/cpu_detect.cpp)
+add_executable(yolo_detect_node 
+  src/yolo_detect_node.cpp
+  src/cpu_detect.cpp
+)
 
-target_include_directories(yolo_detector_lib PUBLIC
+# =========================================================
+# 4. 包含目录
+# =========================================================
+target_include_directories(yolo_detect_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
   ${OpenCV_INCLUDE_DIRS}
   ${ONNXRUNTIME_INCLUDE_DIRS}
 )
 
-target_link_libraries(yolo_detector_lib
-  ${OpenCV_LIBRARIES}
-  ${ONNXRUNTIME_LIBRARIES}
-)
-
-ament_target_dependencies(yolo_detector_lib
-  "rclcpp" 
-  "yolo_common" 
-)
-
 # =========================================================
-# 3. 编译 ROS 节点 (Node)
+# 5. 链接依赖
 # =========================================================
-add_executable(yolo_detect_node src/yolo_detect_node.cpp)
-
-set_target_properties(yolo_detect_node PROPERTIES
-  INSTALL_RPATH "${ONNX_INSTALL_PATH}/lib"
-  BUILD_WITH_INSTALL_RPATH TRUE
-)
-
-target_include_directories(yolo_detect_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
-  ${OpenCV_INCLUDE_DIRS}
-)
-
-target_link_libraries(yolo_detect_node
-  yolo_detector_lib
-  ${OpenCV_LIBRARIES}
-)
-
 ament_target_dependencies(yolo_detect_node
   "rclcpp"
   "sensor_msgs"
@@ -86,22 +63,16 @@ ament_target_dependencies(yolo_detect_node
   "yolo_common"
 )
 
+target_link_libraries(yolo_detect_node
+  ${OpenCV_LIBRARIES}
+  ${ONNXRUNTIME_LIBRARIES}
+)
+
 # =========================================================
-# 4. 安装规则
+# 6. 安装规则
 # =========================================================
-# 4.1 安装可执行文件
+# 6.1 安装可执行文件
 install(TARGETS yolo_detect_node
   DESTINATION lib/${PROJECT_NAME})
-
-# 4.2 安装库文件
-install(TARGETS yolo_detector_lib
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin)
-
-# 4.3 安装头文件
-install(DIRECTORY include/
-  DESTINATION include/${PROJECT_NAME}
-)
 
 ament_package()

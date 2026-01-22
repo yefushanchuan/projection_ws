@@ -282,7 +282,7 @@ void MainWindow::setupUi() {
     layClass->addWidget(new QLabel("类别文件:"));
 
     le_class_path = new QLineEdit();
-    le_class_path->setPlaceholderText("默认 (COCO 80类)(仅CPU推理支持更换类别文件)");
+    le_class_path->setPlaceholderText("默认:COCO 80类(仅CPU推理支持更换类别文件)");
     le_class_path->setReadOnly(true); 
     le_class_path->setToolTip("选择 .names 或 .txt 文件，为空则使用默认 COCO");
     layClass->addWidget(le_class_path);
