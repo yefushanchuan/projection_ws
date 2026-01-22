@@ -112,7 +112,6 @@ public:
                     auto custom_classes = yolo_common::utils::LoadClassesFromFile(final_class_path);
                     if (!custom_classes.empty()) {
                         detector_->config_.class_names = custom_classes;
-                        // 别忘了更新 class_num，推理循环通常依赖这个
                         detector_->config_.class_num = custom_classes.size();
                         RCLCPP_INFO(this->get_logger(), "Loaded custom classes: %s", class_filename.c_str());
                     }
@@ -226,10 +225,10 @@ private:
         // 5. 可视化窗口管理
         if (show_image_) {
             // ShowWindow 内部处理绘制和 FPS 显示
-            yolo_common::vis::ShowWindow("CPU Detect", color_img, results, win_created_flag_, fps_monitor_.Get());
+            yolo_common::vis::ShowWindow("Detection Result", color_img, results, win_created_flag_, fps_monitor_.Get());
         } else if (win_created_flag_) {
             // 参数关闭显示时，自动销毁窗口
-            cv::destroyWindow("CPU Detect");
+            cv::destroyWindow("Detection Result");
             win_created_flag_ = false;
             cv::waitKey(1);
         }

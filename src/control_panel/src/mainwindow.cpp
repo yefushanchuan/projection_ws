@@ -174,8 +174,6 @@ void MainWindow::onStartClicked()
         cmdArgs << QString("class_labels_file:=%1").arg(class_str);
     }
 
-    qDebug() << "Executing: ros2" << cmdArgs.join(" ");
-
     // 4. 执行 (直接运行 ros2 命令)
     // 注意：前提是运行这个 Qt 程序的终端已经 source 过 ROS 环境
     launch_process->start("ros2", cmdArgs);
