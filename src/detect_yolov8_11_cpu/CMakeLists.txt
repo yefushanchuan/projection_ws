@@ -17,8 +17,6 @@ find_package(image_transport REQUIRED)
 find_package(object3d_msgs REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(OpenCV REQUIRED)
-
-# 【修改点 1】必须查找 yolo_common
 find_package(yolo_common REQUIRED)
 
 # =========================================================
@@ -41,19 +39,16 @@ add_library(yolo_detector_lib src/cpu_detect.cpp)
 
 target_include_directories(yolo_detector_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
   ${OpenCV_INCLUDE_DIRS}
   ${ONNXRUNTIME_INCLUDE_DIRS}
 )
 
-# 链接原生库 (OpenCV, ONNX)
 target_link_libraries(yolo_detector_lib
   ${OpenCV_LIBRARIES}
   ${ONNXRUNTIME_LIBRARIES}
 )
 
-# 【修改点 2】使用 ament 添加 ROS 包依赖 (包含 yolo_common)
-# 这会自动处理 yolo_common 的头文件路径，解决找不到头文件的问题
 ament_target_dependencies(yolo_detector_lib
   "rclcpp" 
   "yolo_common" 
@@ -71,17 +66,15 @@ set_target_properties(yolo_detect_node PROPERTIES
 
 target_include_directories(yolo_detect_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
   ${OpenCV_INCLUDE_DIRS}
 )
 
-# 链接我们自己的库 和 OpenCV
 target_link_libraries(yolo_detect_node
   yolo_detector_lib
   ${OpenCV_LIBRARIES}
 )
 
-# 【修改点 3】在依赖列表中添加 yolo_common
 ament_target_dependencies(yolo_detect_node
   "rclcpp"
   "sensor_msgs"
@@ -90,25 +83,25 @@ ament_target_dependencies(yolo_detect_node
   "image_transport"
   "object3d_msgs"
   "ament_index_cpp"
-  "yolo_common"   # <--- 加上这个，节点才能使用 visualization.hpp
+  "yolo_common"
 )
 
 # =========================================================
 # 4. 安装规则
 # =========================================================
+# 4.1 安装可执行文件
 install(TARGETS yolo_detect_node
   DESTINATION lib/${PROJECT_NAME})
 
+# 4.2 安装库文件
 install(TARGETS yolo_detector_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
 
+# 4.3 安装头文件
 install(DIRECTORY include/
-  DESTINATION include)
-
-install(DIRECTORY models
-  DESTINATION share/${PROJECT_NAME}
+  DESTINATION include/${PROJECT_NAME}
 )
 
 ament_package()

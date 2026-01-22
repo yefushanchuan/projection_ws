@@ -22,6 +22,7 @@
 #include "yolo_common/visualization.hpp"
 #include "yolo_common/math_utils.hpp"
 #include "yolo_common/ros_utils.hpp" 
+#include "yolo_common/file_utils.hpp"
 
 using namespace std::chrono_literals;
 
@@ -39,6 +40,7 @@ public:
         this->declare_parameter("nms_thres", 0.45);
         this->declare_parameter("show_image", true);
         this->declare_parameter("model_filename", "yolo11n.onnx"); 
+        this->declare_parameter("class_labels_file", ""); 
 
         // 读取相机内参到统一结构体
         cam_param_.fx = this->get_parameter("camera.fx").as_double();
@@ -52,42 +54,77 @@ public:
         show_image_ = this->get_parameter("show_image").as_bool();
         
         // ============================================================
-        // 2. 初始化检测器
+        // 2. 初始化检测器 (Unified Path Logic)
         // ============================================================
         std::string model_filename = this->get_parameter("model_filename").as_string();
-        std::string final_model_path;
+        std::string class_filename = this->get_parameter("class_labels_file").as_string();
         
-        // 处理模型路径 (支持绝对路径 或 包内路径)
-        if (model_filename.front() == '/') {
-            final_model_path = model_filename;
-        } else {
-            try {
-                std::string package_path = ament_index_cpp::get_package_share_directory("detect_yolov8_11_cpu");
-                final_model_path = package_path + "/models/" + model_filename;
-            } catch (const std::exception& e) {
-                RCLCPP_ERROR(this->get_logger(), "Error finding package path: %s", e.what());
+        std::filesystem::path ws_root;
+        bool found_ws = false;
+
+        // --- 2.1 查找工作空间根目录 ---
+        try {
+            std::filesystem::path p(ament_index_cpp::get_package_share_directory("detect_yolov8_11_cpu"));
+            while (p.has_parent_path() && p.filename() != "install") {
+                p = p.parent_path();
+            }
+            if (p.filename() == "install") {
+                ws_root = p.parent_path();
+                found_ws = true;
+            } else {
+                RCLCPP_ERROR(this->get_logger(), "Failed to locate 'install' dir.");
                 return;
             }
-        }
-
-        namespace fs = std::filesystem;
-        if (!fs::exists(final_model_path)) {
-            RCLCPP_ERROR(this->get_logger(), "Model file not found: %s", final_model_path.c_str());
+        } catch (const std::exception& e) {
+            RCLCPP_ERROR(this->get_logger(), "Path error: %s", e.what());
             return;
         }
 
-        RCLCPP_INFO(this->get_logger(), "Loading model: %s", final_model_path.c_str());
-        
+        // --- 2.2 解析并加载模型 (Workspace/models) ---
+        if (model_filename.front() == '/') {
+            resolved_model_path_ = model_filename;
+        } else {
+            resolved_model_path_ = (ws_root / "models" / model_filename).string();
+        }
+
+        if (!std::filesystem::exists(resolved_model_path_)) {
+            RCLCPP_ERROR(this->get_logger(), "Model not found: %s", resolved_model_path_.c_str());
+            return;
+        }
+        RCLCPP_INFO(this->get_logger(), "Loading model: %s", resolved_model_path_.c_str());
+
         try {
-            // 实例化检测器
-            detector_ = std::make_unique<CPU_Detect>(final_model_path);
+            // 实例化 (内部默认已经是 COCO)
+            detector_ = std::make_unique<CPU_Detect>(resolved_model_path_);
             
-            // 应用初始配置 (对齐 BPU 风格)
+            // --- 2.3 尝试加载自定义类别 (Workspace/configs) ---
+            // 只有当参数不为空时，才尝试覆盖默认值
+            if (!class_filename.empty()) {
+                std::string final_class_path;
+                if (class_filename.front() == '/') {
+                    final_class_path = class_filename;
+                } else {
+                    final_class_path = (ws_root / "configs" / class_filename).string();
+                }
+
+                // 只有文件存在且解析出内容，才进行覆盖
+                if (std::filesystem::exists(final_class_path)) {
+                    auto custom_classes = yolo_common::utils::LoadClassesFromFile(final_class_path);
+                    if (!custom_classes.empty()) {
+                        detector_->config_.class_names = custom_classes;
+                        // 别忘了更新 class_num，推理循环通常依赖这个
+                        detector_->config_.class_num = custom_classes.size();
+                        RCLCPP_INFO(this->get_logger(), "Loaded custom classes: %s", class_filename.c_str());
+                    }
+                }
+            }
+            
+            // --- 2.4 应用阈值 ---
             detector_->config_.conf_thres = (float)conf_thres;
-            detector_->config_.iou_thres = (float)nms_thres;
+            detector_->config_.nms_iou_thres = (float)nms_thres;
             
         } catch (const std::exception& e) {
-            RCLCPP_ERROR(this->get_logger(), "Detector init failed: %s", e.what());
+            RCLCPP_ERROR(this->get_logger(), "Init failed: %s", e.what());
             return;
         }
 
@@ -140,8 +177,8 @@ private:
             }
             else if (param.get_name() == "nms_thres") {
                 if (detector_) {
-                    detector_->config_.iou_thres = (float)param.as_double();
-                    RCLCPP_INFO(this->get_logger(), "Updated nms_thres: %.2f", detector_->config_.iou_thres);
+                    detector_->config_.nms_iou_thres = (float)param.as_double();
+                    RCLCPP_INFO(this->get_logger(), "Updated nms_thres: %.2f", detector_->config_.nms_iou_thres);
                 }
             }
         }
@@ -201,7 +238,8 @@ private:
     // ============================================================
     // 成员变量
     // ============================================================
-    
+    std::string resolved_model_path_;
+
     // 统一内参结构
     yolo_common::ros_utils::CameraIntrinsics cam_param_;
     

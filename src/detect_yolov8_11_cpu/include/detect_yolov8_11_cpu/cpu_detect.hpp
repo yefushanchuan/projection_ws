@@ -13,7 +13,7 @@ class CPU_Detect {
 public:
     struct Config {
         float conf_thres = 0.50f;
-        float iou_thres = 0.45f;
+        float nms_iou_thres = 0.45f;
         std::vector<std::string> class_names;
         int class_num;
     };

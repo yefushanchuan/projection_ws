@@ -7,11 +7,11 @@ CPU_Detect::CPU_Detect(const std::string& model_path)
     : env_(ORT_LOGGING_LEVEL_WARNING, "Yolo11"), 
       session_options_()
 {
-    // 1. 初始化默认配置 (对齐 BPU)
-    config_.class_names = yolo_common::WEED_CLASSES;
+    // 1. 初始化默认配置
+    config_.class_names = yolo_common::COCO_CLASSES;
     config_.class_num = config_.class_names.size();
     config_.conf_thres = 0.5f;
-    config_.iou_thres = 0.45f;
+    config_.nms_iou_thres = 0.45f;
 
     // 2. 初始化 Session
     session_options_.SetIntraOpNumThreads(8);
@@ -74,7 +74,7 @@ std::vector<yolo_common::UnifiedResult> CPU_Detect::detect(const cv::Mat& img) {
 
     // 使用 config_ 中的参数
     float conf_thres = config_.conf_thres;
-    float iou_thres = config_.iou_thres;
+    float nms_iou_thres = config_.nms_iou_thres;
 
     for (int i = 0; i < rows; ++i) {            
         float max_score = -1.0f;
@@ -106,7 +106,7 @@ std::vector<yolo_common::UnifiedResult> CPU_Detect::detect(const cv::Mat& img) {
     }
 
     std::vector<int> indices;
-    cv::dnn::NMSBoxes(boxes, confidences, conf_thres, iou_thres, indices);
+    cv::dnn::NMSBoxes(boxes, confidences, conf_thres, nms_iou_thres, indices);
 
     std::vector<yolo_common::UnifiedResult> results;
     for (int idx : indices) {

@@ -4,6 +4,7 @@
 #include "dnn_node/dnn_node.h"
 #include "dnn_node/util/image_proc.h"
 #include <chrono>
+#include <filesystem>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include "object3d_msgs/msg/object3_d_array.hpp"
 #include <message_filters/subscriber.h>
@@ -42,17 +43,39 @@ public:
         cam_param_.cy = this->get_parameter("camera.cy").as_double();
 
         // 2. 路径解析
-        std::string model_param = this->get_parameter("model_filename").as_string();
-        if (model_param.front() == '/') {
-            resolved_model_path_ = model_param;
+        std::string model_filename = this->get_parameter("model_filename").as_string();
+
+        if (model_filename.front() == '/') {
+            resolved_model_path_ = model_filename;
         } else {
             try {
-                resolved_model_path_ = ament_index_cpp::get_package_share_directory("segment_yolov8_11_bpu") + "/models/" + model_param;
+                // 1. 获取包路径
+                std::filesystem::path p(ament_index_cpp::get_package_share_directory("segment_yolov8_11_bpu"));
+
+                // 2. 向上查找直到找到 'install' 目录
+                while (p.has_parent_path() && p.filename() != "install") {
+                    p = p.parent_path();
+                }
+
+                // 3. 取 install 的上一级作为工作空间根目录，并拼接 models
+                if (p.filename() == "install") {
+                    resolved_model_path_ = (p.parent_path() / "models" / model_filename).string();
+                } else {
+                    RCLCPP_ERROR(this->get_logger(), "Failed to locate 'install' directory.");
+                    return;
+                }
             } catch (const std::exception& e) {
-                RCLCPP_ERROR(this->get_logger(), "Error finding package path: %s", e.what());
+                RCLCPP_ERROR(this->get_logger(), "Path error: %s", e.what());
                 return;
             }
         }
+
+        // 3. 检查与加载
+        if (!std::filesystem::exists(resolved_model_path_)) {
+            RCLCPP_ERROR(this->get_logger(), "[Error] Model not found: %s", resolved_model_path_.c_str());
+            return;
+        }
+        RCLCPP_INFO(this->get_logger(), "Loading model: %s", resolved_model_path_.c_str());
 
         // 3. Init DNN
         if (Init() != 0) {
