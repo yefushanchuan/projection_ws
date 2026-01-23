@@ -39,7 +39,7 @@ public:
     this->declare_parameter<int>("projection_height", 720);
 
     // 新增：滤波参数 (调节这两个数改变平滑程度)
-    this->declare_parameter<double>("filter_min_alpha", 0.0); // 越小越稳
+    this->declare_parameter<double>("filter_min_alpha", 0.5); // 越小越稳
     this->declare_parameter<double>("filter_gamma", 0.1);     // 越大跟手越快
 
     fx_ = this->get_parameter("fx").as_double();
@@ -169,7 +169,7 @@ private:
         int radius = static_cast<int>(state.r);
 
         if (u >= 0 && u < projection_width_ && v >= 0 && v < projection_height_) {
-            cv::circle(image, cv::Point(u, v), radius, cv::Scalar(0, 255, 0), -1);
+            cv::circle(image, cv::Point(u, v), radius/2, cv::Scalar(0, 255, 0), -1);// 填充圆（缩小一倍）
         }
         
         ++it;
