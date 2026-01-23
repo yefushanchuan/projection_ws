@@ -34,7 +34,7 @@ public:
     this->declare_parameter<double>("fy", 1612.8);
     this->declare_parameter<double>("cx", 640.0);
     this->declare_parameter<double>("cy", 360.0);
-    this->declare_parameter<double>("min_z_threshold", 0.5);
+    this->declare_parameter<double>("min_z_threshold", 0.3);
     this->declare_parameter<int>("projection_width", 1280);
     this->declare_parameter<int>("projection_height", 720);
 
