@@ -15,5 +15,5 @@ Host Computer Interaction Interface
 
 Example ：mushroom
 <p align="center">
-![9a95d5208e04bebfb65e2e6307d94a9](https://github.com/user-attachments/assets/6ab57fad-1ab8-4f50-a316-3c22ea0f53c5)
+ps://github.com/user-attachments/assets/6ab57fad-1ab8-4f50-a316-3c22ea0f53c5)
 </p>
