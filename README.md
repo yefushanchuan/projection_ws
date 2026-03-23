@@ -15,5 +15,5 @@ Host Computer Interaction Interface
 
 Example ：mushroom
 <p align="center">
-ps://github.com/user-attachments/assets/6ab57fad-1ab8-4f50-a316-3c22ea0f53c5)
+  <img width="1220" height="911" alt="image" src="https://github.com/user-attachments/assets/e856e660-575a-482d-9d2b-28dcf828d9b3" />
 </p>
