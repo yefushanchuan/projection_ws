@@ -142,7 +142,7 @@ class CameraSubscriber(Node):
         self.bridge = CvBridge()
         self.latest_frame = None
         self.sub = self.create_subscription(
-            Image, cam_topic, self._cb, rclcpp.SensorDataQoS().keep_last(5))
+            Image, cam_topic, self._cb, rclpy.qos.qos_profile_sensor_data)
         self.get_logger().info(f"Subscribed to {cam_topic}")
 
     def _cb(self, msg):
@@ -153,8 +153,8 @@ class CameraSubscriber(Node):
 
     def get_frame(self, timeout=5.0):
         started = time.time()
-        while rclcpp.ok():
-            rclcpp.spin_once(self, timeout_sec=0.01)
+        while rclpy.ok():
+            rclpy.spin_once(self, timeout_sec=0.01)
             if self.latest_frame is not None:
                 return self.latest_frame.copy()
             if time.time() - started > timeout:
@@ -163,7 +163,7 @@ class CameraSubscriber(Node):
 
     def flush_and_get(self, n_flush=3, timeout=5.0):
         for _ in range(n_flush):
-            rclcpp.spin_once(self, timeout_sec=0.1)
+            rclpy.spin_once(self, timeout_sec=0.1)
         return self.get_frame(timeout)
 
 
